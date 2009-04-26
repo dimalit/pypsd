@@ -2,7 +2,7 @@ import logging
 import unittest
 
 from psdfile import PSDFile
-from pypsd.sections import PSDHeader
+from pypsd.sections import *
 
 logging.config.fileConfig("../conf/logging.conf")
 
@@ -19,17 +19,23 @@ class PSDTest(unittest.TestCase):
 		psd.parse()
 		print (psd)
 
-	def testPSDHeader(self):
+	def testPSDSections(self):
 		self.failUnlessRaises(BaseException, PSDHeader)
 		with open(self.testPSDFileName, mode = "rb") as f:
+			#Header Parsing
 			header = PSDHeader(f)
-			print (header)
 			self.failUnlessEqual(header.signature, "8BPS")
 			self.failUnlessEqual(header.version, 1)
 
 			#trying to parse from begining, when we are not in begining
 			self.failUnlessRaises(BaseException, PSDHeader, f)
 
+			colorMode = PSDColorMode(f)
+			self.failUnlessEqual(colorMode.code, 0)
+
+			imageResources = PSDImageResources(f)
+
+			layerMask = PSDLayerMask(f)
 
 
 if __name__ == "__main__":

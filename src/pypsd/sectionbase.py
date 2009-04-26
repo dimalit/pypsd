@@ -30,6 +30,7 @@ class PSDParserBase(object):
 			raise BaseException("File object should be specified.")
 		self.f = fileObj
 		self.SIGNATURE = "8BPS"
+		self.SIGNATIRE_8BIM = "8BIM"
 		self.length = None
 
 		self.parse()
@@ -58,7 +59,12 @@ class PSDParserBase(object):
 		return value
 
 	def readShortInt(self):
-		bytes = self.readCustomInt(2)
+		ch1 = self.readCustomInt(1)
+		ch2 = self.readCustomInt(1)
+		if ch1 > 0:
+			bytes =  -(256 - ch1)
+		else:
+			bytes = ch2
 		self.logger.debug("readShortInt method. read bytes = %s" % bytes)
 		return bytes
 

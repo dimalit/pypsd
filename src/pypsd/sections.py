@@ -204,12 +204,12 @@ class PSDColorMode(PSDParserBase, CodeMapObject):
 	def __str__(self):
 		return "==Color Mode==\n%s" % super(PSDColorMode, self).__str__()
 
+
 class PSDImageResources(PSDParserBase):
 	'''
 	The third section of the file contains image resources. As with
 	the color mode data, the section is indicated by a length field
 	followed by the data.
-
 	'''
 
 	def __init__(self, fileObj):
@@ -240,13 +240,48 @@ class PSDLayerMask(PSDParserBase):
 	the length field, which is set to zero.
 
 	Table 10-7: Layer and mask information
-
 	Length 		Name 		Description
 
 	4 bytes 	Length 		Length of the miscellaneous information section.
+
 	Variable 	Layers 		Layer info. See table 10-10.
 	Variable 	Masks 		One or more layer mask info structures.
 							See table 10-13.
+
+	Table 10-10. Layer structure
+	Length 		Name 		Description
+
+	2 bytes 	Count 		Number of layers.
+					If <0, then number of layers is absolute value,
+					and the first alpha channel contains the transparency
+					data for the merged result.
+	Variable 	Layer 		Information about each layer (table 10-11).
+
+
+	Table 10-12: Channel length info
+	Length 		Name 		Description
+
+	2 bytes 	Channel ID 	0 = red, 1 = green, etc.
+					-1 = transparency mask
+					-2 = user supplied layer mask
+	4 bytes 	Length 		Length of following channel data.
+
+
+	Table 10-13: Layer mask data
+	Length 		Name 		Description
+
+	4 bytes 	Size 		Size of layer mask data. This will be
+					either 0x14, or zero (in which case the
+					following fields are not present).
+	4 bytes 	Top 		Rectangle enclosing layer mask.
+	4 bytes 	Left
+	4 bytes 	Bottom
+	4 bytes 	Right
+	1 byte 		Default color 	0 or 255
+	1 byte 		Flags 		bit 0: position relative to layer
+					bit 1: layer mask disabled
+					bit 2: invert layer mask when blending
+	2 bytes 	Padding 	Zeros
 	'''
 
 	def __init__(self, fileObj):
@@ -256,17 +291,106 @@ class PSDLayerMask(PSDParserBase):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayerMask")
 		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
 
+		self.layersCount = None
+		self.masklength = None
+		self.layers = []
+
 		super(PSDLayerMask, self).__init__(fileObj)
 
 	def parse(self):
 		self.logger.debug("parse method")
 		self.updateLength()
+		#self.skip(self.layerslength) #TODO get Data
 
-		self.skip(self.length) #TODO get Data
+		self.layerInfoLength = self.readInt()
+
+		self.layersCount = self.readShortInt()
+		for i in range(self.layersCount):
+			#process each layer
+			#layers.append()
+			layer = PSDLayer(self.f)
+			self.layers.append(layer)
+
+		self.masklength = self.readInt()
+		self.skip(self.masklength) #TODO get Data
 
 	def __str__(self):
-		return "==Layer Mask==\nLength:%d" % self.length;
+		return ("==Layer Mask==\n"
+				"Whole Length: %d\n"
+				"Layers count: %d\n"
+				"Mask Length: %d" %
+				(self.length, self.layersCount, self.masklength));
 
+class PSDLayer(PSDParserBase):
+	'''
+	4 bytes 	Blend mode key 	'norm' = normal
+					'dark' = darken
+					'lite' = lighten
+					'hue ' = hue
+					'sat ' = saturation
+					'colr' = color
+					'lum ' = luminosity
+					'mul ' = multiply
+					'scrn' = screen
+					'diss' = dissolve
+					'over' = overlay
+					'hLit' = hard light
+					'sLit' = soft light
+					'diff' = difference
+	1 byte 		Opacity 	0 = transparent ... 255 = opaque
+	1 byte 		Clipping 	0 = base, 1 = non-base
+	1 byte 		Flags 		bit0: transparency protected
+					bit1: visible
+	1 byte 		(filler) 	(zero)
+	4 bytes 	Extra data size Length of the extra data field. This is
+					the total length of the next five fields.
+	24 bytes, or 4 bytes if no layer mask.
+			Layer mask data	See table 10-13.
+	Variable 	Layer blending ranges i
+					See table 10-14.
+	Variable 	Layer name 	Pascal string, padded to a multiple of 4 bytes.
+	'''
+	def __init__(self, fileObj):
+		'''
+		fileObj is opened file to be readed
+		'''
+		self.logger = logging.getLogger("pypsd.sections.PSDLayer")
+		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
+
+		self.top = None
+		self.left = None
+		self.bottom = None
+		self.right = None
+		self.channels = {}
+
+		super(PSDLayer, self).__init__(fileObj)
+
+	def parse(self):
+		#The rectangle containing the contents of the layer.
+		self.top = self.readInt()    #4 bytes 	Layer top
+		self.left = self.readInt()   #4 bytes 	Layer left
+		self.bottom = self.readInt() #4 bytes 	Layer bottom
+		self.right = self.readInt()  #4 bytes 	Layer right
+
+		#2 bytes 	Number channels The number of channels in the layer.
+		self.chanelsCount = self.readShortInt()
+
+		#Variable 	Channel information. This contains a six byte record
+		#for each channel. See table 10-12.
+		for i in range(self.chanelsCount):
+			channelId = self.readShortInt()
+			channelLength = self.readInt()
+			if channelId in self.channels:
+				if type(self.channels[channelId]) == list:
+					self.channels[channelId].append(channelLength)
+				else:
+					self.channels[channelId] = [self.channels[channelId]]
+			else:
+				self.channels[channelId] = channelLength
+
+		#4 bytes 	Blend mode signature. Always '8BIM'.
+		bimSignature = self.readString(4)
+		assert bimSignature == self.SIGNATIRE_8BIM
 
 class PSDImageData(PSDParserBase):
 	'''
@@ -310,8 +434,6 @@ class PSDImageData(PSDParserBase):
 	def __str__(self):
 		return ("==Image Data==\nCompression: %s\n"
 			"Bytes Left: %d" % (self.compression, self.bytesleft));
-
-
 
 class ImageDataCompression(CodeMapObject):
 	def __init__(self, code):

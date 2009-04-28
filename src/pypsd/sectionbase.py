@@ -16,12 +16,24 @@ def bytesToInt(bytes):
 	module_logger.debug("bytesToInt method. In: %s, out: %s" % (bytes, value))
 	return value
 
+def int2Binary(n):
+	'''convert denary integer n to binary string bStr'''
+
+	bStr = ''
+	if n < 0: raise ValueError ("must be a positive integer")
+	if n == 0: return '0'
+	while n > 0:
+		bStr = str(n % 2) + bStr
+		n = n >> 1
+
+	return bStr
+
 class PSDParserBase(object):
 	def __init__(self, fileObj = None, *args, **kwargs):
 		self.logger = logging.getLogger("pypsd.sectionbase.PSDParserBase")
 
 		self.logger.debug(
-				"__int__ method. In: fileObj=%s, args=%s, kwargs=%s" % \
+				"__int__ method. In: fileObj=%s, args=%s, kwargs=%s" %
 				(fileObj, args, kwargs))
 
 		super(PSDParserBase, self).__init__(*args, **kwargs)
@@ -68,10 +80,20 @@ class PSDParserBase(object):
 		self.logger.debug("readShortInt method. read bytes = %s" % bytes)
 		return bytes
 
+	def readTinyInt(self):
+		tinyInt = self.readCustomInt(1)
+		self.logger.debug("readTinyInt method. read bytes = %s" % tinyInt)
+		return tinyInt
+
 	def readInt(self):
 		value = self.readCustomInt(4)
 		self.logger.debug("readInt method. value = %d" % value)
 		return value
+
+	def readBits(self, size):
+		int = self.readCustomInt(size)
+		bits = int2Binary(int)
+		return list(map(int, bits))
 
 	def readString(self, size):
 		value = str(self.read(size), "UTF-8")

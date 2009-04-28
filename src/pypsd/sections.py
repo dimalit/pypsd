@@ -323,24 +323,7 @@ class PSDLayerMask(PSDParserBase):
 
 class PSDLayer(PSDParserBase):
 	'''
-	4 bytes 	Blend mode key 	'norm' = normal
-					'dark' = darken
-					'lite' = lighten
-					'hue ' = hue
-					'sat ' = saturation
-					'colr' = color
-					'lum ' = luminosity
-					'mul ' = multiply
-					'scrn' = screen
-					'diss' = dissolve
-					'over' = overlay
-					'hLit' = hard light
-					'sLit' = soft light
-					'diff' = difference
-	1 byte 		Opacity 	0 = transparent ... 255 = opaque
-	1 byte 		Clipping 	0 = base, 1 = non-base
-	1 byte 		Flags 		bit0: transparency protected
-					bit1: visible
+
 	1 byte 		(filler) 	(zero)
 	4 bytes 	Extra data size Length of the extra data field. This is
 					the total length of the next five fields.
@@ -362,6 +345,10 @@ class PSDLayer(PSDParserBase):
 		self.bottom = None
 		self.right = None
 		self.channels = {}
+		self.blend = ()
+		self.opacity = None
+		self.clipping = ()
+
 
 		super(PSDLayer, self).__init__(fileObj)
 
@@ -391,6 +378,28 @@ class PSDLayer(PSDParserBase):
 		#4 bytes 	Blend mode signature. Always '8BIM'.
 		bimSignature = self.readString(4)
 		assert bimSignature == self.SIGNATIRE_8BIM
+
+		#4 bytes 	Blend mode key
+		blendMap = {"norm":"normal",  "dark":"darken", "lite":"lighten",
+					"hue":"hue", "sat":"saturation", "colr":"color",
+					"lum":"luminosity", "mul":"multiply", "scrn":"screen",
+					"diss":"dissolve", "over":"overlay", "hLit":"hard light",
+					"sLit":"soft light", "diff":"difference"}
+		blendCode = self.readString(4)
+		self.blend = (blendCode, blendMap[blendCode])
+
+		#1 byte 		Opacity 	0 = transparent ... 255 = opaque
+		self.opacity = self.readTinyInt()
+
+		#1 byte 		Clipping 	0 = base, 1 = non-base
+		clippingMap = {0:"base", 1:"non-base"}
+		clippingCode = self.readTinyInt()
+		self.clipping = (clippingCode, clippingMap[clippingCode])
+
+		#1 byte 		Flags 		bit0: transparency protected, bit1: visible
+		flagsBits = self.readBits(1)
+		self.transpProtected = flagsBits[0]
+		self.visible =  flagsBits[1]
 
 class PSDImageData(PSDParserBase):
 	'''

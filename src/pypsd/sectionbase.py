@@ -41,10 +41,18 @@ class PSDParserBase(object):
 		if fileObj is None or not isinstance(fileObj, io.BufferedReader):
 			raise BaseException("File object should be specified.")
 		self.f = fileObj
+		self.length = None
+		
+		'''
+		Constants.
+		'''
 		self.SIGNATURE = "8BPS"
 		self.SIGNATIRE_8BIM = "8BIM"
-		self.length = None
-
+		self.VERSION = 1
+		self.CHANNELS_RANGE = range(1, 56)
+		self.SIZE_RANGE = range(1, 30000)
+		self.DEPTH_LIST = [1,8,16]
+		
 		self.parse()
 
 	def parse(self):
@@ -52,7 +60,7 @@ class PSDParserBase(object):
 
 	def updateLength(self):
 		self.length = self.readInt()
-		self.logger.debug("updateLength method. read %d bytes" % self.length)
+		self.logger.debug("updateLength method. Length is %d bytes" % self.length)
 
 	def read(self, size):
 		bytes = self.f.read(size)
@@ -103,6 +111,14 @@ class PSDParserBase(object):
 
 	def getsize(self):
 		return os.path.getsize(self.f.name)
+	
+	def getRectangle(self):
+		top = self.readInt()
+		left = self.readInt()
+		bottom = self.readInt()
+		right = self.readInt()
+		
+		return {"top":top, "left":left, "bottom":bottom, "right":right}
 
 
 class CodeMapObject(object):

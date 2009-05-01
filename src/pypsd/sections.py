@@ -1,6 +1,25 @@
 import logging
 from pypsd.sectionbase import PSDParserBase,CodeMapObject
 
+def validate(label, value, range=None, mustBe=None, list=None):
+	assert label not None
+	assert value not None or range not None or list not None
+	if mustBe:
+		if value != mustBe:
+			raise BaseException("%s should be %s but was %s" % 
+							    (label, mustBe, value))
+	elif range:
+		if value not in range:
+			raise BaseException(
+				"%s must be between %d and %d, but was %s" %
+				(label, range[0], range[-1], value))
+	elif list:
+		if value not in list:
+			raise BaseException(
+				"%s must be one of %s, but was %s" %
+				(label, list, value))
+	
+
 class PSDHeader(PSDParserBase):
 	'''
 	The file header is fixed length, the other four sections are variable
@@ -36,126 +55,105 @@ class PSDHeader(PSDParserBase):
 		'''
 		self.logger = logging.getLogger("pypsd.sections.PSDHeader")
 		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
-
+		
 		if hasattr(fileObj, "tell") and fileObj.tell() != 0:
 			raise TypeError("Argument should be file pointer and it should be "
 							"at the beginning of file")
 
 		self.signature = None
 		self.version = None
-		self.channels = None
+		self.channelsNum = None
 		self.rows = None
-		self.columns = None
+		self.width = None
 		self.depth = None
-		self.mode = None
+		self.colorMode = None
 
 		super(PSDHeader, self).__init__(fileObj)
-
-
-
-
 
 	def parse(self):
 		self.logger.debug("parse method.")
 
 		'''
-		Signature. 4 bytes.
-		Always equal to '8BPS'.
+		4 bytes.
+		Signature: Always equal to '8BPS'.
 		Do not try to read the file if the signature does not match this value.
 		'''
 		self.signature = self.readString(4)
 		self.logger.debug("Signature: %s" % self.signature)
-
-		if self.signature != self.SIGNATURE:
-			raise BaseException("Signature must much should be %s but was %s" %
-								(self.signature, self.SIGNATURE))
+		validate("Signature", self.signature, mustBe=self.SIGNATURE)
 
 		'''
-		Version. 2 bytes.
-		Always equal to 1. Do not try to read the file if the version does
-		not match this value.
+		2 bytes.
+		Version: Always equal to 1. Do not try to read the file if the version 
+		does not match this value.
 		'''
 		self.version = self.readShortInt()
 		self.logger.debug("Version: %d" % self.version)
-		#if self.signature != 1:
-		# Always equal to 1. Do not try to read the file if the version does
-		#    raise BaseException("Signature must much should be %s but was %s" %
-		#                        (self.signature, self.SIGNATURE))
+		validate("Version", self.version, mustBe=self.VERSION)
 
-		'''6 bytes 	Reserved 	Must be zero.'''
+		'''
+		6 bytes.
+		Reserved: Must be zero.'''
 		self.skip(6)
 
 		'''
-		Channels. 2 bytes.
-		The number of channels in the image, including any alpha channels.
-		Supported range is 1 to 24.
+		2 bytes.
+		Channels: The number of channels in the image, including any alpha channels.
+		Supported range is 1 to 56.
 		'''
-		self.channels = self.readShortInt() #TODO 1-24 max
-		self.logger.debug("Channels: %d" % self.channels)
+		self.channelsNum = self.readShortInt()
+		self.logger.debug("Channels #: %d" % self.channelsNum)
+		validate("Channels number", self.channelsNum, range=self.CHANNELS_RANGE)
 
 		'''
-		Rows. 4 bytes.
-		The height of the image in pixels. Supported range is 1 to 30,000.
+		4 bytes.
+		Height: The height of the image in pixels. Supported range is 1 to 30,000.
 		'''
-		self.rows = self.readInt() #TODO 1-30 000
-		self.logger.debug("Rows (Height): %d" % self.rows)
+		self.height = self.readInt()
+		self.logger.debug("Height: %d" % self.height)
+		validate("Height", self.height, range=self.SIZE_RANGE)
 
 		'''
-		Columns. 4 bytes.
-		The width of the image in pixels. Supported range is 1 to 30,000.
+		4 bytes.
+		Width: The width of the image in pixels. Supported range is 1 to 30,000.
 		'''
-		self.columns = self.readInt() #TODO 1-30 000
-		self.logger.debug("Columns (Width): %d" % self.columns)
+		self.width = self.readInt()
+		self.logger.debug("Width: %d" % self.width)
+		validate("Width", self.width, range=self.SIZE_RANGE)
 
 		'''
-		Depth. 2 bytes.
-		The number of bits per channel. Supported values are 1, 8, and 16.
+		2 bytes.
+		Depth: The number of bits per channel. Supported values are 1, 8, and 16.
 		'''
 		self.depth = self.readShortInt() #TODO 1, 8, 16 .check for new versions
 		self.logger.debug("Color Depth: %d" % self.depth)
+		validate("Depth", self.depth, list=self.DEPTH_LIST)
 
 		'''
-		Mode. 2 bytes.
-
+		2 bytes.
+		Color Mode: The color mode of the file. 
 		'''
-		self.mode = ColorSchema(self.readShortInt())
-		self.logger.debug("Color Schema: %s" % self.mode)
+		colorModeMap = {0:"Bitmap", 1:"Grayscale", 2:"Indexed Color", 
+						   3:"RGB Color", 4:"CMYK Color", 7:"Multichannel", 
+						   8:"Duotone", 9:"Lab Color"}
+		colorMode = self.readShortInt()
+		self.colorMode = {"code":colorMode, "label":colorModeMap[colorMode]}
+		self.logger.debug("Color Schema: %s" % self.colorMode)
 
 	def __str__(self):
 		return  ("==Header==\nSignature: %s\n"
 				"Version: %s\n"
 				"Channels: %s\n"
-				"Rows: %s\n"
-				"Columns: %s\n"
+				"Height: %s\n"
+				"Width: %s\n"
 				"Depth: %s\n"
-				"Mode: %s" % (self.signature, self.version, self.channels, self.rows,
-							self.columns, self.depth, self.mode))
-
-class ColorSchema(CodeMapObject):
-	'''
-	The color mode of the file. Supported values are:
-	Bitmap = 0
-	Grayscale = 1
-	Indexed Color = 2
-	RGB Color = 3
-	CMYK Color = 4
-	Multichannel = 7
-	Duotone = 8
-	Lab Color = 9
-	'''
-
-	def __init__(self, code=None, *args, **kwargs):
-		self.logger = logging.getLogger("pypsd.sections.ColorSchema")
-		self.logger.debug("__init__ method. In: code=%s, args=%s, kwargs=%s" %
-						(code, args, kwargs))
-
-		super(ColorSchema, self).__init__(code=code, map=
-				{0:"Bitmap", 1:"Grayscale", 2:"Indexed Color", 3:"RGB Color",
-				4:"CMYK Color", 7:"Multichannel", 8:"Duotone", 9:"Lab Color"})
+				"Color Mode: %s" % 
+				(self.signature, self.version, self.channelsNum, self.height,
+							self.width, self.depth, self.colorMode))
 
 
 
-class PSDColorMode(PSDParserBase, CodeMapObject):
+class PSDColorMode(PSDParserBase):
 	'''
 	Only indexed color and duotone have color mode data. For all other
 	modes, this section is just 4 bytes: the length field, which is set to zero.
@@ -171,38 +169,30 @@ class PSDColorMode(PSDParserBase, CodeMapObject):
 	and writing the file.
 	'''
 
-	def __init__(self, fileObj=None, *args, **kwargs):
+	def __init__(self, fileObj):
 		'''
 		fileObj is opened file to be readed
 		'''
 		self.logger = logging.getLogger("pypsd.sections.PSDColorMode")
-		self.logger.debug("__init__ method. In: fileObj=%s, args=%s, kwargs=%s" %
-						(fileObj, args, kwargs))
-
-		super(PSDColorMode, self).__init__(fileObj=fileObj,
-										map={0:"Other", 768:"Indexed Colors" })
-
+		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
+		
+		self.data = None
+		
+		super(PSDColorMode, self).__init__(fileObj)
+		
+		
 	def parse(self):
 		'''
-		Length. 4 bytes.
-		The length of the following color data.
+		4 bytes.
+		Length: The length of the following color data.
 		'''
 		self.updateLength()
-		self.skip(self.length)
+		self.skip(self.length) #TODO Process color table
 		self.code = self.length
-		super(PSDColorMode, self).updatename()
-
-		'''
-		Color data. Variable.
-		The color data.
-		'''
-		self.data = None #TODO Process color data
-
-		self.logger.debug("parse method. Length: %s, Mode Name: %s" %
-						(self.length, self.name))
 
 	def __str__(self):
-		return "==Color Mode==\n%s" % super(PSDColorMode, self).__str__()
+		return "==Color Mode==\nLength: %d" % self.length
+
 
 
 class PSDImageResources(PSDParserBase):
@@ -220,7 +210,7 @@ class PSDImageResources(PSDParserBase):
 		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
 
 		super(PSDImageResources, self).__init__(fileObj)
-		#TODO Make it!
+
 
 	def parse(self):
 		self.logger.debug("parse method.")
@@ -230,6 +220,7 @@ class PSDImageResources(PSDParserBase):
 
 	def __str__(self):
 		return "==Image Resources==\nLength:%d" % self.length;
+
 
 
 class PSDLayerMask(PSDParserBase):
@@ -299,15 +290,34 @@ class PSDLayerMask(PSDParserBase):
 
 	def parse(self):
 		self.logger.debug("parse method")
+		'''
+		4 bytes.
+		Length of the layer and mask information section.
+		'''
 		self.updateLength()
-		#self.skip(self.layerslength) #TODO get Data
-
+		
+		'''
+		4 bytes.
+		Length of the layers info section, rounded up to a multiple of 2. 
+		'''
 		self.layerInfoLength = self.readInt()
-
+		
+		'''
+		2 bytes.
+		Layer count. 
+		'''
 		self.layersCount = self.readShortInt()
+		
+		'''
+		If it is a negative number, its absolute value is the number of
+		layers and the first alpha channel contains the transparency data for the
+		merged result.
+		'''
+		if self.layersCount < 0:
+			#TODO Process this if needed.
+			self.layersCount = abs(self.layersCount)
+			
 		for i in range(self.layersCount):
-			#process each layer
-			#layers.append()
 			layer = PSDLayer(self.f)
 			self.layers.append(layer)
 
@@ -340,10 +350,6 @@ class PSDLayer(PSDParserBase):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayer")
 		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
 
-		self.top = None
-		self.left = None
-		self.bottom = None
-		self.right = None
 		self.channels = {}
 		self.blend = ()
 		self.opacity = None
@@ -353,11 +359,12 @@ class PSDLayer(PSDParserBase):
 		super(PSDLayer, self).__init__(fileObj)
 
 	def parse(self):
-		#The rectangle containing the contents of the layer.
-		self.top = self.readInt()    #4 bytes 	Layer top
-		self.left = self.readInt()   #4 bytes 	Layer left
-		self.bottom = self.readInt() #4 bytes 	Layer bottom
-		self.right = self.readInt()  #4 bytes 	Layer right
+		'''
+		4 * 4 bytes.
+		Rectangle containing the contents of the layer. Specified as top, left,
+		bottom, right coordinates.
+		'''
+		self.rectangle = self.getRectangle()
 
 		#2 bytes 	Number channels The number of channels in the layer.
 		self.chanelsCount = self.readShortInt()
@@ -411,7 +418,7 @@ class PSDImageData(PSDParserBase):
 	If the compression code is 0, the image data is just the raw image data.
 
 	If the compression code is 1, the image data starts with the byte counts
-	for all the scan lines (rows * channels), with each count stored
+	for all the scan lines (height * channels), with each count stored
 	as a two-byte value. The RLE compressed data follows, with each
 	scan line compressed separately. The RLE compression is the same
 	compression algorithm used by the Macintosh ROM routine PackBits,

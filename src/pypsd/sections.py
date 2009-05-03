@@ -2,14 +2,14 @@ import logging
 from pypsd.sectionbase import PSDParserBase,CodeMapObject
 
 def validate(label, value, range=None, mustBe=None, list=None):
-	assert label not None
-	assert value not None or range not None or list not None
+	assert label is not None
+	assert value is not None or range is not None or list is not None
 	if mustBe:
 		if value != mustBe:
 			raise BaseException("%s should be %s but was %s" % 
 							    (label, mustBe, value))
 	elif range:
-		if value not in range:
+		if value < range[0] or value > range[-1]:
 			raise BaseException(
 				"%s must be between %d and %d, but was %s" %
 				(label, range[0], range[-1], value))
@@ -36,17 +36,6 @@ class PSDHeader(PSDParserBase):
 
 	File header section
 	The file header contains the basic properties of the image.
-
-	Table 10-4: File header
-	Length 		Name
-	4 bytes 	Signature
-	2 bytes 	Version
-	6 bytes 	Reserved
-	2 bytes 	Channels
-	4 bytes 	Rows
-	4 bytes 	Columns
-	2 bytes		Depth
-	2 bytes 	Mode
 	'''
 
 	def __init__(self, fileObj):
@@ -137,13 +126,14 @@ class PSDHeader(PSDParserBase):
 						   3:"RGB Color", 4:"CMYK Color", 7:"Multichannel", 
 						   8:"Duotone", 9:"Lab Color"}
 		colorMode = self.readShortInt()
-		self.colorMode = {"code":colorMode, "label":colorModeMap[colorMode]}
+		self.colorMode = self.getCodeLabelPair(colorMode, colorModeMap)
+		
 		self.logger.debug("Color Schema: %s" % self.colorMode)
 
 	def __str__(self):
 		return  ("==Header==\nSignature: %s\n"
 				"Version: %s\n"
-				"Channels: %s\n"
+				"Channels #: %s\n"
 				"Height: %s\n"
 				"Width: %s\n"
 				"Depth: %s\n"
@@ -229,50 +219,6 @@ class PSDLayerMask(PSDParserBase):
 	and masks.
 	If there are no layers or masks, this section is just 4 bytes:
 	the length field, which is set to zero.
-
-	Table 10-7: Layer and mask information
-	Length 		Name 		Description
-
-	4 bytes 	Length 		Length of the miscellaneous information section.
-
-	Variable 	Layers 		Layer info. See table 10-10.
-	Variable 	Masks 		One or more layer mask info structures.
-							See table 10-13.
-
-	Table 10-10. Layer structure
-	Length 		Name 		Description
-
-	2 bytes 	Count 		Number of layers.
-					If <0, then number of layers is absolute value,
-					and the first alpha channel contains the transparency
-					data for the merged result.
-	Variable 	Layer 		Information about each layer (table 10-11).
-
-
-	Table 10-12: Channel length info
-	Length 		Name 		Description
-
-	2 bytes 	Channel ID 	0 = red, 1 = green, etc.
-					-1 = transparency mask
-					-2 = user supplied layer mask
-	4 bytes 	Length 		Length of following channel data.
-
-
-	Table 10-13: Layer mask data
-	Length 		Name 		Description
-
-	4 bytes 	Size 		Size of layer mask data. This will be
-					either 0x14, or zero (in which case the
-					following fields are not present).
-	4 bytes 	Top 		Rectangle enclosing layer mask.
-	4 bytes 	Left
-	4 bytes 	Bottom
-	4 bytes 	Right
-	1 byte 		Default color 	0 or 255
-	1 byte 		Flags 		bit 0: position relative to layer
-					bit 1: layer mask disabled
-					bit 2: invert layer mask when blending
-	2 bytes 	Padding 	Zeros
 	'''
 
 	def __init__(self, fileObj):
@@ -304,7 +250,7 @@ class PSDLayerMask(PSDParserBase):
 		
 		'''
 		2 bytes.
-		Layer count. 
+		Layers count. 
 		'''
 		self.layersCount = self.readShortInt()
 		
@@ -320,7 +266,10 @@ class PSDLayerMask(PSDParserBase):
 		for i in range(self.layersCount):
 			layer = PSDLayer(self.f)
 			self.layers.append(layer)
-
+		
+		for layer in self.layers:
+			layer.getImageData() 
+		
 		self.masklength = self.readInt()
 		self.skip(self.masklength) #TODO get Data
 
@@ -330,6 +279,8 @@ class PSDLayerMask(PSDParserBase):
 				"Layers count: %d\n"
 				"Mask Length: %d" %
 				(self.length, self.layersCount, self.masklength));
+
+
 
 class PSDLayer(PSDParserBase):
 	'''
@@ -355,7 +306,6 @@ class PSDLayer(PSDParserBase):
 		self.opacity = None
 		self.clipping = ()
 
-
 		super(PSDLayer, self).__init__(fileObj)
 
 	def parse(self):
@@ -366,47 +316,133 @@ class PSDLayer(PSDParserBase):
 		'''
 		self.rectangle = self.getRectangle()
 
-		#2 bytes 	Number channels The number of channels in the layer.
+		'''
+		2 bytes.
+		The number of channels in the layer.
+		'''
 		self.chanelsCount = self.readShortInt()
 
-		#Variable 	Channel information. This contains a six byte record
-		#for each channel. See table 10-12.
+		'''
+		6 * number of channels bytes
+		Channel information. Six bytes per channel.
+		'''
+		self.channelsInfo = {}
 		for i in range(self.chanelsCount):
 			channelId = self.readShortInt()
 			channelLength = self.readInt()
-			if channelId in self.channels:
-				if type(self.channels[channelId]) == list:
-					self.channels[channelId].append(channelLength)
-				else:
-					self.channels[channelId] = [self.channels[channelId]]
-			else:
-				self.channels[channelId] = channelLength
+			self.channelsInfo[channelId] = channelLength
 
-		#4 bytes 	Blend mode signature. Always '8BIM'.
+		'''
+		4 bytes.
+		Blend mode signature. 
+		'''
 		bimSignature = self.readString(4)
-		assert bimSignature == self.SIGNATIRE_8BIM
+		validate("Blend mode signature", bimSignature, mustBe=self.SIGNATIRE_8BIM)
 
-		#4 bytes 	Blend mode key
+		'''
+		4 bytes.
+		Blend mode key.
+		'''
 		blendMap = {"norm":"normal",  "dark":"darken", "lite":"lighten",
 					"hue":"hue", "sat":"saturation", "colr":"color",
 					"lum":"luminosity", "mul":"multiply", "scrn":"screen",
 					"diss":"dissolve", "over":"overlay", "hLit":"hard light",
-					"sLit":"soft light", "diff":"difference"}
+					"sLit":"soft light", "diff":"difference","smud":"exclusion",
+					"div ":"color dodge", "idiv":"color burn", 
+					"lbrn":"linear burn", "lddg":"linear dodge", 
+					"vLit":"vivid light", "lLit":"linear light", 
+					"pLit":"pin light", "hMix":"hard mix"}
 		blendCode = self.readString(4)
-		self.blend = (blendCode, blendMap[blendCode])
+		self.blend =self.colorMode = self.getCodeLabelPair(blendCode, blendMap) 
 
-		#1 byte 		Opacity 	0 = transparent ... 255 = opaque
+		'''
+		1 byte.
+		Opacity. 0 = transparent ... 255 = opaque
+		'''
 		self.opacity = self.readTinyInt()
+		validate("Opacity", self.opacity, self.OPACITY_RANGE)
 
-		#1 byte 		Clipping 	0 = base, 1 = non-base
-		clippingMap = {0:"base", 1:"non-base"}
-		clippingCode = self.readTinyInt()
-		self.clipping = (clippingCode, clippingMap[clippingCode])
+		'''
+		1 byte.
+		Clipping. 0 (false) = base, 1 (true) = non-base
+		'''
+		self.clipping = self.readTinyInt() != 0
 
-		#1 byte 		Flags 		bit0: transparency protected, bit1: visible
+		'''
+		1 byte.
+		bit 0 = transparency protected 
+		bit 1 = visible
+		bit 2 = obsolete
+		bit 3 = 1 for Photoshop 5.0 and later, tells if bit 4 has useful information;
+		bit 4 = pixel data irrelevant to appearance of document
+		'''
 		flagsBits = self.readBits(1)
-		self.transpProtected = flagsBits[0]
-		self.visible =  flagsBits[1]
+		self.transpProtected = flagsBits[0] != 0
+		self.visible =  flagsBits[1] != 0
+		self.obsolete =  flagsBits[2] != 0
+		
+		'''
+		1 bytes.
+		Filler (zero).
+		'''
+		validate("Filler (zero)", self.readBits(1), mustBe=0)
+		
+		# ---- Extra Fields Parsing.
+		
+		'''
+		4 bytes.
+		Extra data field.
+		'''
+		extraFieldLength = self.readInt()
+		pos = self.f.tell()
+		
+		'''
+		4 bytes.
+		Size of the data: 36, 20, or 0.
+		If zero, the following fields are not present
+		'''
+		size = self.readInt()
+		validate("Size of the data", size, list=[36, 20, 0])
+		self.skip(size)
+		
+		'''
+		4 bytes.
+		Length of layer blending ranges data
+		'''
+		size = self.readInt()
+		self.skip(size)
+		
+		'''
+		Variable.
+		Layer name: Pascal string, padded to a multiple of 4 bytes.
+		'''
+		size = self.readTinyInt()
+		size = ((size + 1 + 3) & ~0x03) - 1;
+		self.name = self.readString(size)
+		
+		#TODO Parse Additional Meta Fields
+		
+		self.skip(extraFieldLength + pos - self.f.tell())
+	
+	def getImageData(self):
+		'''
+		Channel image data. Contains one or more image data records for each 
+		layer. The layers are in the same order as in the layer information.
+		'''
+		channels = {"a":[],"r":[],"g":[],"b":[]}
+		for channelId in self.channelsInfo:
+			if channelId == -1:
+				channels["a"]
+			elif channelId == 0:
+				pss
+			elif channelId == 1:
+				pass
+			elif channelId == 2:
+				pass	
+		
+		
+
+ 
 
 class PSDImageData(PSDParserBase):
 	'''

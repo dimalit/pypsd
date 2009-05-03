@@ -49,9 +49,10 @@ class PSDParserBase(object):
 		self.SIGNATURE = "8BPS"
 		self.SIGNATIRE_8BIM = "8BIM"
 		self.VERSION = 1
-		self.CHANNELS_RANGE = range(1, 56)
-		self.SIZE_RANGE = range(1, 30000)
+		self.CHANNELS_RANGE = [1, 56]
+		self.SIZE_RANGE = [1, 30000]
 		self.DEPTH_LIST = [1,8,16]
+		self.OPACITY_RANGE = [0, 255]
 		
 		self.parse()
 
@@ -99,8 +100,8 @@ class PSDParserBase(object):
 		return value
 
 	def readBits(self, size):
-		int = self.readCustomInt(size)
-		bits = int2Binary(int)
+		value = self.readCustomInt(size)
+		bits = int2Binary(value)
 		return list(map(int, bits))
 
 	def readString(self, size):
@@ -119,6 +120,10 @@ class PSDParserBase(object):
 		right = self.readInt()
 		
 		return {"top":top, "left":left, "bottom":bottom, "right":right}
+	
+	def getCodeLabelPair(self, code, map):
+		return {"code":code, "label":map[code]}
+		
 
 
 class CodeMapObject(object):

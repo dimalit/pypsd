@@ -88,7 +88,7 @@ class PSDParserBase(object):
 			bytes = ch2
 		self.logger.debug("readShortInt method. read bytes = %s" % bytes)
 		return bytes
-
+	
 	def readTinyInt(self):
 		tinyInt = self.readCustomInt(1)
 		self.logger.debug("readTinyInt method. read bytes = %s" % tinyInt)
@@ -118,8 +118,11 @@ class PSDParserBase(object):
 		left = self.readInt()
 		bottom = self.readInt()
 		right = self.readInt()
+		width = right-left
+		height=bottom-top
 		
-		return {"top":top, "left":left, "bottom":bottom, "right":right}
+		return {"top":top, "left":left, "bottom":bottom, "right":right, 
+			    "width":width, "height":height}
 	
 	def getCodeLabelPair(self, code, map):
 		return {"code":code, "label":map[code]}

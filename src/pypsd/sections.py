@@ -432,13 +432,51 @@ class PSDLayer(PSDParserBase):
 		channels = {"a":[],"r":[],"g":[],"b":[]}
 		for channelId in self.channelsInfo:
 			if channelId == -1:
-				channels["a"]
+				channels["a"] = self.getChannelImageData()
 			elif channelId == 0:
-				pss
+				channels["r"] = self.getChannelImageData()
 			elif channelId == 1:
-				pass
+				channels["g"] = self.getChannelImageData()
 			elif channelId == 2:
-				pass	
+				channels["b"] = self.getChannelImageData()
+				
+	def getChannelImageData(self):
+		'''
+		2 bytes.
+		Compression. 
+		0 = Raw Data, 
+		1 = RLE compressed, 
+		2 = ZIP without prediction, 
+		3 = ZIP with prediction.
+  		'''
+		compression = self.readShortInt()
+		validate("Compression", compression, range=[0,3])
+		
+		size = self.rectangle["width"] * self.rectangle["height"]
+		imageData = []
+		'''
+		If the compression code is 1, the image data starts with the byte 
+		counts for all the scan lines in the channel (LayerBottom￢ﾀﾓLayerTop), 
+		with each count stored as a two￢ﾀﾓbyte value.
+		'''
+		if compression == 1: #RLE compressed
+			lineLengths = []
+			for h in self.rectangle["height"]:
+				lineLength = self.readShortInt()
+				lineLengths.append(lineLength)
+			#RLE reading
+		elif compression == 0:
+			#not RLE reading.
+			
+		else:
+			raise NotImplementedError("Zip compression is not working yet.")
+			
+			
+				
+			
+
+			 
+		
 		
 		
 

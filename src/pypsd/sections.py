@@ -1,5 +1,5 @@
 import logging
-from pypsd.sectionbase import PSDParserBase,CodeMapObject
+from pypsd.base import PSDParserBase
 
 def validate(label, value, range=None, mustBe=None, list=None):
 	assert label is not None
@@ -38,14 +38,12 @@ class PSDHeader(PSDParserBase):
 	The file header contains the basic properties of the image.
 	'''
 
-	def __init__(self, fileObj):
-		'''
-		fileObj is opened file to be readed
-		'''
+	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDHeader")
-		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
+		self.debugMethodInOut("__init__", {"stream":stream})
 		
-		if hasattr(fileObj, "tell") and fileObj.tell() != 0:
+		if stream is None or not isinstance(stream, io.BufferedReader) and \
+		  stream.tell() != 0:
 			raise TypeError("Argument should be file pointer and it should be "
 							"at the beginning of file")
 
@@ -57,10 +55,10 @@ class PSDHeader(PSDParserBase):
 		self.depth = None
 		self.colorMode = None
 
-		super(PSDHeader, self).__init__(fileObj)
+		super(PSDHeader, self).__init__(stream)
 
 	def parse(self):
-		self.logger.debug("parse method.")
+		self.debugMethodInOut("parse")
 
 		'''
 		4 bytes.
@@ -159,25 +157,23 @@ class PSDColorMode(PSDParserBase):
 	and writing the file.
 	'''
 
-	def __init__(self, fileObj):
-		'''
-		fileObj is opened file to be readed
-		'''
+	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDColorMode")
-		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
+		self.debugMethodInOut("__init__", {"stream":stream})
 		
 		self.data = None
 		
-		super(PSDColorMode, self).__init__(fileObj)
+		super(PSDColorMode, self).__init__(stream)
 		
 		
 	def parse(self):
+		self.debugMethodInOut("parse")
+		
 		'''
 		4 bytes.
 		Length: The length of the following color data.
 		'''
-		self.updateLength()
-		self.skip(self.length) #TODO Process color table
+		self.skipIntSize() #TODO Process color table
 		self.code = self.length
 
 	def __str__(self):
@@ -192,21 +188,17 @@ class PSDImageResources(PSDParserBase):
 	followed by the data.
 	'''
 
-	def __init__(self, fileObj):
-		'''
-		fileObj is opened file to be readed
-		'''
+	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDImageResources")
-		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
+		self.debugMethodInOut("__init__", {"stream":stream})
 
-		super(PSDImageResources, self).__init__(fileObj)
+		super(PSDImageResources, self).__init__(stream)
 
 
 	def parse(self):
-		self.logger.debug("parse method.")
-		self.updateLength()
-
-		self.skip(self.length) #TODO real Data
+		self.debugMethodInOut("parse")
+		
+		self.skipIntSize() #TODO real Data
 
 	def __str__(self):
 		return "==Image Resources==\nLength:%d" % self.length;
@@ -221,26 +213,24 @@ class PSDLayerMask(PSDParserBase):
 	the length field, which is set to zero.
 	'''
 
-	def __init__(self, fileObj):
-		'''
-		fileObj is opened file to be readed
-		'''
+	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayerMask")
-		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
+		self.debugMethodInOut("__init__", {"stream":stream})
 
 		self.layersCount = None
 		self.masklength = None
 		self.layers = []
 
-		super(PSDLayerMask, self).__init__(fileObj)
+		super(PSDLayerMask, self).__init__(stream)
 
 	def parse(self):
-		self.logger.debug("parse method")
+		self.debugMethodInOut("parse")
+		
 		'''
 		4 bytes.
 		Length of the layer and mask information section.
 		'''
-		self.updateLength()
+		layerMaskSize = self.readInt()
 		
 		'''
 		4 bytes.
@@ -270,15 +260,10 @@ class PSDLayerMask(PSDParserBase):
 		for layer in self.layers:
 			layer.getImageData() 
 		
-		self.masklength = self.readInt()
-		self.skip(self.masklength) #TODO get Data
+		self.skipIntSize() #TODO get Data
 
 	def __str__(self):
-		return ("==Layer Mask==\n"
-				"Whole Length: %d\n"
-				"Layers count: %d\n"
-				"Mask Length: %d" %
-				(self.length, self.layersCount, self.masklength));
+		return "==Layer Mask==\n";
 
 
 
@@ -294,21 +279,20 @@ class PSDLayer(PSDParserBase):
 					See table 10-14.
 	Variable 	Layer name 	Pascal string, padded to a multiple of 4 bytes.
 	'''
-	def __init__(self, fileObj):
-		'''
-		fileObj is opened file to be readed
-		'''
+	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayer")
-		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
+		self.debugMethodInOut("__init__", {"stream":stream})
 
 		self.channels = {}
 		self.blend = ()
 		self.opacity = None
 		self.clipping = ()
 
-		super(PSDLayer, self).__init__(fileObj)
+		super(PSDLayer, self).__init__(stream)
 
 	def parse(self):
+		self.debugMethodInOut("parse")
+		
 		'''
 		4 * 4 bytes.
 		Rectangle containing the contents of the layer. Specified as top, left,
@@ -394,7 +378,7 @@ class PSDLayer(PSDParserBase):
 		Extra data field.
 		'''
 		extraFieldLength = self.readInt()
-		pos = self.f.tell()
+		pos = self.steam.tell()
 		
 		'''
 		4 bytes.
@@ -409,8 +393,7 @@ class PSDLayer(PSDParserBase):
 		4 bytes.
 		Length of layer blending ranges data
 		'''
-		size = self.readInt()
-		self.skip(size)
+		self.skipIntSize()
 		
 		'''
 		Variable.
@@ -422,7 +405,7 @@ class PSDLayer(PSDParserBase):
 		
 		#TODO Parse Additional Meta Fields
 		
-		self.skip(extraFieldLength + pos - self.f.tell())
+		self.skip(extraFieldLength + pos - self.steam.tell())
 	
 	def getImageData(self):
 		'''
@@ -467,69 +450,62 @@ class PSDLayer(PSDParserBase):
 			#RLE reading
 		elif compression == 0:
 			#not RLE reading.
-			
+			pass
 		else:
 			raise NotImplementedError("Zip compression is not working yet.")
-			
-			
-				
-			
 
-			 
-		
-		
 		
 
  
 
-class PSDImageData(PSDParserBase):
-	'''
-	The image pixel data is the last section of a Photoshop
-	3.0 file. Image data is stored in planar order, first all the red
-	data, then all the green data, etc. Each plane is stored in
-	scanline order, with no pad bytes.
-
-	If the compression code is 0, the image data is just the raw image data.
-
-	If the compression code is 1, the image data starts with the byte counts
-	for all the scan lines (height * channels), with each count stored
-	as a two-byte value. The RLE compressed data follows, with each
-	scan line compressed separately. The RLE compression is the same
-	compression algorithm used by the Macintosh ROM routine PackBits,
-	and the TIFF standard.
-
-	Table 10-8: Image data
-	Length 		Name 		Description
-
-	2 bytes 	Compression 	Compression method. Raw data = 0, RLE compressed = 1.
-	Variable 	Data 		The image data.
-	'''
-
-	def __init__(self, fileObj):
-		'''
-		fileObj is opened file to be readed
-		'''
-		self.logger = logging.getLogger("pypsd.sections.PSDImageData")
-		self.logger.debug("__init__ method. In: fileObj=%s" % fileObj)
-		self.compression = None
-		self.bytesleft = None
-		super(PSDImageData, self).__init__(fileObj)
-
-	def parse(self):
-		self.compression = ImageDataCompression(self.readShortInt())
-		self.bytesleft = self.getsize() - self.f.tell()
-		self.logger.debug("parse method. Compression=%s" % self.compression)
-
-
-	def __str__(self):
-		return ("==Image Data==\nCompression: %s\n"
-			"Bytes Left: %d" % (self.compression, self.bytesleft));
-
-class ImageDataCompression(CodeMapObject):
-	def __init__(self, code):
-		self.logger = logging.getLogger("pypsd.sections.ImageDataCompression")
-		super(ImageDataCompression, self).__init__(code,
-											{0:"Raw data", 1:"RLE compressed"})
-		self.logger.debug("__init__ method. In: code=%s, name=%s" %
-						(self.code, self.name ))
+#class PSDImageData(PSDParserBase):
+#	'''
+#	The image pixel data is the last section of a Photoshop
+#	3.0 file. Image data is stored in planar order, first all the red
+#	data, then all the green data, etc. Each plane is stored in
+#	scanline order, with no pad bytes.
+#
+#	If the compression code is 0, the image data is just the raw image data.
+#
+#	If the compression code is 1, the image data starts with the byte counts
+#	for all the scan lines (height * channels), with each count stored
+#	as a two-byte value. The RLE compressed data follows, with each
+#	scan line compressed separately. The RLE compression is the same
+#	compression algorithm used by the Macintosh ROM routine PackBits,
+#	and the TIFF standard.
+#
+#	Table 10-8: Image data
+#	Length 		Name 		Description
+#
+#	2 bytes 	Compression 	Compression method. Raw data = 0, RLE compressed = 1.
+#	Variable 	Data 		The image data.
+#	'''
+#
+#	def __init__(self, stream):
+#		'''
+#		stream is opened file to be readed
+#		'''
+#		self.logger = logging.getLogger("pypsd.sections.PSDImageData")
+#		self.logger.debug("__init__ method. In: stream=%s" % stream)
+#		self.compression = None
+#		self.bytesleft = None
+#		super(PSDImageData, self).__init__(stream)
+#
+#	def parse(self):
+#		self.compression = ImageDataCompression(self.readShortInt())
+#		self.bytesleft = self.getSize() - self.steam.tell()
+#		self.logger.debug("parse method. Compression=%s" % self.compression)
+#
+#
+#	def __str__(self):
+#		return ("==Image Data==\nCompression: %s\n"
+#			"Bytes Left: %d" % (self.compression, self.bytesleft));
+#
+#class ImageDataCompression(CodeMapObject):
+#	def __init__(self, code):
+#		self.logger = logging.getLogger("pypsd.sections.ImageDataCompression")
+#		super(ImageDataCompression, self).__init__(code,
+#											{0:"Raw data", 1:"RLE compressed"})
+#		self.logger.debug("__init__ method. In: code=%s, name=%s" %
+#						(self.code, self.name ))
 

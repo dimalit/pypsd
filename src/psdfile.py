@@ -55,7 +55,7 @@ class PSDFile(object):
 
 			self.layerMask = PSDLayerMask(f)
 
-			self.imageData = PSDImageData(f)
+			#self.imageData = PSDImageData(f)
 
 	def __str__(self):
 		return ("File Name:%s\n%s\n%s\n%s\n%s\n%s" %

@@ -1,6 +1,7 @@
 import logging
 from pypsd.base import PSDParserBase
 import io
+from PIL import Image
 
 def validate(label, value, range=None, mustBe=None, list=None):
 	assert label is not None
@@ -296,8 +297,8 @@ class PSDLayer(PSDParserBase):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayer")
 		self.debugMethodInOut("__init__", {"stream":stream})
 
-		'''Channel information. map[channelId] = channelLength'''
-		self.channelsInfo = {}
+		'''Channel information. list(tuple(channelId, Length))'''
+		self.channelsInfo = []
 		'''Blend mode key. blendMode.code, blendMode.label'''
 		self.blendMode = {}
 		'''Opacity. 0 = transparent ... 255 = opaque'''
@@ -343,11 +344,11 @@ class PSDLayer(PSDParserBase):
 		6 * number of channels bytes
 		Channel information. Six bytes per channel.
 		'''
-		self.channelsInfo = {}
+		self.channelsInfo = []
 		for i in range(chanelsCount):
 			channelId = self.readShortInt()
 			channelLength = self.readInt()
-			self.channelsInfo[channelId] = channelLength
+			self.channelsInfo.append((channelId, channelLength))
 
 		'''
 		4 bytes.
@@ -522,8 +523,8 @@ class PSDLayer(PSDParserBase):
 		4 bytes.
 		Type. 4 possible values, 
 		0 = any other type of layer, 
-		1 = open “folder”, 
-		2 = closed “folder”, 
+		1 = open "folder", 
+		2 = closed "folder", 
 		3 = bounding section divider, hidden in the UI
 		'''
 		typesMap = {0:"other", 1:"open folder", 2:"closed folder", 
@@ -538,7 +539,8 @@ class PSDLayer(PSDParserBase):
 		layer. The layers are in the same order as in the layer information.
 		'''
 		self.channels = {"a":[],"r":[],"g":[],"b":[]}
-		for i, channelId in enumerate(self.channelsInfo):
+		for i, channelTuple in enumerate(self.channelsInfo):
+			channelId, length = channelTuple
 			channel = self.readColorPlane(needReadPlaneInfo, lineLengths, i)
 			if channelId == -1:
 				self.channels["a"] = channel 
@@ -548,11 +550,14 @@ class PSDLayer(PSDParserBase):
 				self.channels["g"] = channel
 			elif channelId == 2:
 				self.channels["b"] = channel
-		
+				
+		if not self.channels["a"]:
+			self.channels["a"] = [255] * self.rectangle["width"] * self.rectangle["height"] 
+			
 		self.debugMethodInOut("getImageData", 
 							  invars={"needReadPlaneInfo":needReadPlaneInfo,
 									  "lineLengths":lineLengths})
-		self.image = self.makeImage()
+		self.makeImage()
 		
 				
 	def readColorPlane(self, needReadPlaneInfo=True, lineLengths=[], planeNum=-1):
@@ -636,8 +641,20 @@ class PSDLayer(PSDParserBase):
 		except Exception:
 			raise BaseException("RLE Decoding fatal error.")
 	
+	
 	def makeImage(self):
-		pass
+		self.image = Image.new("RGBA", (self.rectangle["width"], 
+									    self.rectangle["height"]))
+		imageData = []
+		for i, a in enumerate(self.channels["a"]):
+			r = self.channels["r"][i]
+			g = self.channels["g"][i]
+			b = self.channels["b"][i]
+			rgba = (r,g,b,a)
+			imageData.append(rgba)
+			
+		self.image.putdata(imageData)
+
 	
 	def __str__(self):
 		return ("\n=== Layer - %s ===\n"

@@ -33,14 +33,14 @@ def makeEven(n):
 		n += 1
 	return n
 
-class PSDParserBase():
+class PSDParserBase(object):
 	
 	def __init__(self, stream = None):
 		self.logger = logging.getLogger("pypsd.base.PSDParserBase")
 
 		self.debugMethodInOut("__init__", {"stream":stream})
 
-		if stream is None or not isinstance(stream, io.BufferedReader):
+		if stream is None: #or not isinstance(stream, io.BufferedReader):
 			raise BaseException("File object should be specified.")
 		
 		self.stream = stream
@@ -65,7 +65,7 @@ class PSDParserBase():
 		raise NotImplementedError()
 	
 	def skip(self, size):
-		self.stream.seek(size, whence=1)
+		self.stream.seek(size, 1) #whence=
 		self.debugMethodInOut("skip", {"size":size})
 	
 	def skipIntSize(self):
@@ -74,7 +74,10 @@ class PSDParserBase():
 		self.debugMethodInOut("skipIntSize",result="skipped=%s" % size)
 		
 	def readCustomInt(self, size):
-		value = bytesToInt(self.stream.read(size))
+		#Python 3: value = bytesToInt(self.stream.read(size))
+		bb = bytearray(size)
+		self.stream.readinto(bb)
+		value = bytesToInt(bb)
 		
 		self.debugMethodInOut("readCustomInt", {"size":size}, result=value)
 		return value
@@ -126,7 +129,8 @@ class PSDParserBase():
 	def readString(self, size):
 		dataRead = self.stream.read(size)
 		g = [s for s in dataRead]
-		value = str(dataRead, "UTF-8")
+		#Python 3:value = str(dataRead, "UTF-8")
+		value = str(dataRead)  
 		value = "".join([s for s in value if ord(s) != 0]) #0 is padding char
 		self.debugMethodInOut("readString", {"size":size}, value)
 		

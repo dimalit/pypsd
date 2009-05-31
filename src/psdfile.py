@@ -63,6 +63,19 @@ class PSDFile(object):
 				self.logger.debug("Layer %s\t%d Parent %s" % (l.name, l.layerId, 
 					(l.parent.layerId if l.parent else "None")))
 	
+	def save(self, dest=None):
+		if not dest:
+			dest = os.getcwd()
+
+		for layer in self.layerMask.layers:
+			if layer.layerType == 0:
+				name = layer.name
+				try:
+					image = layer.image
+					image.save("%s/%s.png" % (dest, name), "PNG")
+				except SystemError:
+					self.logger.error("Can't save %s layer." % name)
+	
 	def __str__(self):
 		return ("File Name:%s\n%s\n%s\n%s\n%s\n%s" %
 			(self.fileName,

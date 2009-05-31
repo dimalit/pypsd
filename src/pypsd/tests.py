@@ -8,7 +8,7 @@ logging.config.fileConfig("../conf/logging.conf")
 
 class PSDTest(unittest.TestCase):
 	def setUp(self):
-		self.testPSDFileName = "5x5.psd"
+		self.testPSDFileName = "scroll.psd"
 
 	def testPSDFile(self):
 		psd = PSDFile(self.testPSDFileName)

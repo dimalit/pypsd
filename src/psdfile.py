@@ -29,7 +29,7 @@ class PSDFile(object):
 		self.layerMask = None
 		self.imageData = None
 
-		self.fileName = fileName;
+		self.fileName = fileName
 
 	def parse(self):
 		'''
@@ -63,12 +63,30 @@ class PSDFile(object):
 				self.logger.debug("Layer %s\t%d Parent %s" % (l.name, l.layerId, 
 					(l.parent.layerId if l.parent else "None")))
 	
-	def save(self, dest=None):
+	def save(self, dest=None, saveInvis=False):
 		if not dest:
 			dest = os.getcwd()
-
+		
+		psdBaseName = os.path.basename(self.fileName)
+		psdFileName = os.path.splitext(psdBaseName)
+		dest = "%s/%s" % (dest, psdFileName[0])
+			
+		if not os.path.exists(dest):
+			os.mkdir(dest)
+		
 		for layer in self.layerMask.layers:
-			if layer.layerType == 0:
+			toSave = True
+			
+			if layer.layerType != 0:
+				toSave = False
+				
+			if not layer.visible and not saveInvis:
+				toSave = False
+				
+			if sum(layer.image.size) == 0:
+				toSave = False
+			
+			if toSave:
 				name = layer.name
 				try:
 					image = layer.image

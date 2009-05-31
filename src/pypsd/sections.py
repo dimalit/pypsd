@@ -1,5 +1,6 @@
 import logging
 from pypsd.base import PSDParserBase
+import io
 
 def validate(label, value, range=None, mustBe=None, list=None):
 	assert label is not None
@@ -174,10 +175,9 @@ class PSDColorMode(PSDParserBase):
 		Length: The length of the following color data.
 		'''
 		self.skipIntSize() #TODO Process color table
-		self.code = self.length
 
 	def __str__(self):
-		return "==Color Mode==\nLength: %d" % self.length
+		return "==Color Mode=="
 
 
 
@@ -201,8 +201,7 @@ class PSDImageResources(PSDParserBase):
 		self.skipIntSize() #TODO real Data
 
 	def __str__(self):
-		return "==Image Resources==\nLength:%d" % self.length;
-
+		return "==Image Resources=="
 
 
 class PSDLayerMask(PSDParserBase):
@@ -217,8 +216,6 @@ class PSDLayerMask(PSDParserBase):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayerMask")
 		self.debugMethodInOut("__init__", {"stream":stream})
 
-		self.layersCount = None
-		self.masklength = None
 		self.layers = []
 
 		super(PSDLayerMask, self).__init__(stream)
@@ -232,44 +229,60 @@ class PSDLayerMask(PSDParserBase):
 		'''
 		layerMaskSize = self.readInt()
 		
-		'''
-		4 bytes.
-		Length of the layers info section, rounded up to a multiple of 2. 
-		'''
-		self.layerInfoLength = self.readInt()
-		
-		'''
-		2 bytes.
-		Layers count. 
-		'''
-		self.layersCount = self.readShortInt()
-		
-		'''
-		If it is a negative number, its absolute value is the number of
-		layers and the first alpha channel contains the transparency data for the
-		merged result.
-		'''
-		if self.layersCount < 0:
-			#TODO Process this if needed.
-			self.layersCount = abs(self.layersCount)
+		if layerMaskSize > 0:
+			'''
+			4 bytes.
+			Length of the layers info section, rounded up to a multiple of 2. 
+			'''
+			layerInfoSize = self.readInt(returnEven=True)
 			
-		for i in range(self.layersCount):
-			layer = PSDLayer(self.f)
-			self.layers.append(layer)
-		
-		for layer in self.layers:
-			layer.getImageData() 
-		
-		self.skipIntSize() #TODO get Data
+			if layerInfoSize > 0:
+				'''
+				2 bytes.
+				Layers count.
+				'''
+				layersCount = self.readShortInt()
 
+				'''
+				If it is a negative number, its absolute value is the number of
+				layers and the first alpha channel contains the transparency data for the
+				merged result.
+				'''
+				if layersCount < 0:
+					#TODO Process this if needed.
+					layersCount = abs(layersCount)
+
+				for i in range(layersCount):
+					layer = PSDLayer(self.stream)
+					self.layers.append(layer)
+					self.logger.debug(layer)
+				
+				for layer in self.layers:
+					layer.getImageData(needReadPlaneInfo=True, lineLengths=[]) 
+				
+				self.layers.reverse()
+		self.skipIntSize() #TODO get Data
+	
+	
+	def groupLayers(self):
+		parents = [None]
+		for layer in self.layers:
+			layer.parent = parents[-1]
+			if layer.layerType == 0:
+				pass
+			elif layer.layerType["code"] == 3:
+				del parents[-1]
+			else:
+				parents.append(layer)
+	
+		
 	def __str__(self):
-		return "==Layer Mask==\n";
+		return "==Layer Mask==\n"
 
 
 
 class PSDLayer(PSDParserBase):
 	'''
-
 	1 byte 		(filler) 	(zero)
 	4 bytes 	Extra data size Length of the extra data field. This is
 					the total length of the next five fields.
@@ -283,13 +296,33 @@ class PSDLayer(PSDParserBase):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayer")
 		self.debugMethodInOut("__init__", {"stream":stream})
 
-		self.channels = {}
-		self.blend = ()
+		'''Channel information. map[channelId] = channelLength'''
+		self.channelsInfo = {}
+		'''Blend mode key. blendMode.code, blendMode.label'''
+		self.blendMode = {}
+		'''Opacity. 0 = transparent ... 255 = opaque'''
 		self.opacity = None
-		self.clipping = ()
-
+		'''Clipping. false = base, true = non-base'''
+		self.clipping = None
+		
+		self.transpProtected = None
+		self.visible =  None
+		self.obsolete = None
+		'''Pixel data irrelevant to appearance of document'''
+		self.pixelDataIrrelevant = None
+		
+		'''Layer name'''
+		self.name = None
+		
+		'''Channel image data. {"a":[],"r":[],"g":[],"b":[]}'''
+		self.channels = {}
+		
+		self.layerId = None
+		self.layerType = 0
+		self.parent = None
+		
 		super(PSDLayer, self).__init__(stream)
-
+	
 	def parse(self):
 		self.debugMethodInOut("parse")
 		
@@ -304,14 +337,14 @@ class PSDLayer(PSDParserBase):
 		2 bytes.
 		The number of channels in the layer.
 		'''
-		self.chanelsCount = self.readShortInt()
+		chanelsCount = self.readShortInt()
 
 		'''
 		6 * number of channels bytes
 		Channel information. Six bytes per channel.
 		'''
 		self.channelsInfo = {}
-		for i in range(self.chanelsCount):
+		for i in range(chanelsCount):
 			channelId = self.readShortInt()
 			channelLength = self.readInt()
 			self.channelsInfo[channelId] = channelLength
@@ -337,14 +370,15 @@ class PSDLayer(PSDParserBase):
 					"vLit":"vivid light", "lLit":"linear light", 
 					"pLit":"pin light", "hMix":"hard mix"}
 		blendCode = self.readString(4)
-		self.blend =self.colorMode = self.getCodeLabelPair(blendCode, blendMap) 
+		self.blendMode = self.getCodeLabelPair(blendCode, blendMap)   
+		validate("Blend mode key", blendCode, list=blendMap.keys())
 
 		'''
 		1 byte.
 		Opacity. 0 = transparent ... 255 = opaque
 		'''
 		self.opacity = self.readTinyInt()
-		validate("Opacity", self.opacity, self.OPACITY_RANGE)
+		validate("Opacity", self.opacity, range=self.OPACITY_RANGE)
 
 		'''
 		1 byte.
@@ -362,14 +396,18 @@ class PSDLayer(PSDParserBase):
 		'''
 		flagsBits = self.readBits(1)
 		self.transpProtected = flagsBits[0] != 0
-		self.visible =  flagsBits[1] != 0
+		self.visible =  flagsBits[1] == 0
 		self.obsolete =  flagsBits[2] != 0
+		'''bit 3 = 1 for Photoshop 5.0 and later, tells if bit 4 has useful 
+		information'''
+		if flagsBits[3] != 0:
+			self.pixelDataIrrelevant = flagsBits[4] != 0 
 		
 		'''
 		1 bytes.
 		Filler (zero).
 		'''
-		validate("Filler (zero)", self.readBits(1), mustBe=0)
+		validate("Filler (zero)", self.readTinyInt(), mustBe=0)
 		
 		# ---- Extra Fields Parsing.
 		
@@ -377,8 +415,8 @@ class PSDLayer(PSDParserBase):
 		4 bytes.
 		Extra data field.
 		'''
-		extraFieldLength = self.readInt()
-		pos = self.steam.tell()
+		extraFieldsSize = self.readInt()
+		pos = self.getPos()
 		
 		'''
 		4 bytes.
@@ -399,113 +437,228 @@ class PSDLayer(PSDParserBase):
 		Variable.
 		Layer name: Pascal string, padded to a multiple of 4 bytes.
 		'''
-		size = self.readTinyInt()
-		size = ((size + 1 + 3) & ~0x03) - 1;
-		self.name = self.readString(size)
+		size = self.readTinyInt() & 0xFF
+		size = ((size + 1 + 3) & ~0x03) - 1
+		self.name = self.readString(size) #TODO Here could be problems!!!
+		self.logger.debug([self.name])
 		
-		#TODO Parse Additional Meta Fields
-		
-		self.skip(extraFieldLength + pos - self.steam.tell())
+		prevPos = self.getPos()
+		while self.getPos() - pos < extraFieldsSize:
+			bimSignature = self.readString(4)
+			validate("Blend mode signature", bimSignature, mustBe=self.SIGNATIRE_8BIM)
+			'''
+			4 bytes.
+			Key: a 4-character code
+			'''
+			tag = self.readString(4)
+			
+			'''
+			4 bytes.
+			Length data below, rounded up to an even byte count.
+			'''
+			size = self.readInt(True) 
+			prevPos = self.getPos()
+			
+			if tag == "lyid":
+				'''
+				Layer ID
+				'''
+				self.layerId = self.readInt()
+			
+			elif tag == "shmd":
+				'''
+				Metadata setting
+				'''
+				self.readMetadata()
+
+			elif tag == "lsct":
+				'''
+				Section divider setting
+				'''
+				self.readLayerSectionDevider()
+				
+			
+			self.skipRest(prevPos, size)
+		 
+		self.skipRest(pos, extraFieldsSize)	
 	
-	def getImageData(self):
+	
+	def readMetadata(self):
+		'''
+		4 bytes.
+		Count of metadata items to follow
+		'''
+		metaCount = self.readInt()
+		for i in range(metaCount):
+			'''
+			4 bytes.
+			Signature of the data
+			'''
+			bimSignature = self.readString(4)
+			validate("Meta Data Signature", bimSignature, mustBe=self.SIGNATIRE_8BIM)
+			'''
+			4 bytes.
+			Key of the data
+			'''
+			key = self.readString(4)
+			validate("Key for metadata", list=["mlst"])
+			'''
+			1 bytes. Copy on sheet duplication
+			3 bytes. Padding
+			'''
+			self.skip(4)
+			size = self.readInt()
+			pos = self.getPos()
+			
+			if key == "mlst":
+				pass
+				#TODO readAnimation .. later
+			
+			self.skipRest(pos, size)
+	
+	
+	def readLayerSectionDevider(self):
+		'''
+		4 bytes.
+		Type. 4 possible values, 
+		0 = any other type of layer, 
+		1 = open “folder”, 
+		2 = closed “folder”, 
+		3 = bounding section divider, hidden in the UI
+		'''
+		typesMap = {0:"other", 1:"open folder", 2:"closed folder", 
+				    3:"bounding section divider"}
+		typeCode = self.readInt()
+		self.layerType = self.getCodeLabelPair(typeCode, typesMap)  
+	
+	
+	def getImageData(self, needReadPlaneInfo=True, lineLengths=[]):
 		'''
 		Channel image data. Contains one or more image data records for each 
 		layer. The layers are in the same order as in the layer information.
 		'''
-		channels = {"a":[],"r":[],"g":[],"b":[]}
-		for channelId in self.channelsInfo:
+		self.channels = {"a":[],"r":[],"g":[],"b":[]}
+		for i, channelId in enumerate(self.channelsInfo):
+			channel = self.readColorPlane(needReadPlaneInfo, lineLengths, i)
 			if channelId == -1:
-				channels["a"] = self.getChannelImageData()
+				self.channels["a"] = channel 
 			elif channelId == 0:
-				channels["r"] = self.getChannelImageData()
+				self.channels["r"] = channel
 			elif channelId == 1:
-				channels["g"] = self.getChannelImageData()
+				self.channels["g"] = channel
 			elif channelId == 2:
-				channels["b"] = self.getChannelImageData()
-				
-	def getChannelImageData(self):
-		'''
-		2 bytes.
-		Compression. 
-		0 = Raw Data, 
-		1 = RLE compressed, 
-		2 = ZIP without prediction, 
-		3 = ZIP with prediction.
-  		'''
-		compression = self.readShortInt()
-		validate("Compression", compression, range=[0,3])
+				self.channels["b"] = channel
 		
+		self.debugMethodInOut("getImageData", 
+							  invars={"needReadPlaneInfo":needReadPlaneInfo,
+									  "lineLengths":lineLengths})
+		self.image = self.makeImage()
+		
+				
+	def readColorPlane(self, needReadPlaneInfo=True, lineLengths=[], planeNum=-1):
+		self.debugMethodInOut("readColorPlane")
+
 		size = self.rectangle["width"] * self.rectangle["height"]
 		imageData = []
-		'''
-		If the compression code is 1, the image data starts with the byte 
-		counts for all the scan lines in the channel (LayerBottom￢ﾀﾓLayerTop), 
-		with each count stored as a two￢ﾀﾓbyte value.
-		'''
-		if compression == 1: #RLE compressed
-			lineLengths = []
-			for h in self.rectangle["height"]:
-				lineLength = self.readShortInt()
-				lineLengths.append(lineLength)
-			#RLE reading
-		elif compression == 0:
-			#not RLE reading.
-			pass
-		else:
-			raise NotImplementedError("Zip compression is not working yet.")
-
+		rleEncoded = None
 		
-
- 
-
-#class PSDImageData(PSDParserBase):
-#	'''
-#	The image pixel data is the last section of a Photoshop
-#	3.0 file. Image data is stored in planar order, first all the red
-#	data, then all the green data, etc. Each plane is stored in
-#	scanline order, with no pad bytes.
-#
-#	If the compression code is 0, the image data is just the raw image data.
-#
-#	If the compression code is 1, the image data starts with the byte counts
-#	for all the scan lines (height * channels), with each count stored
-#	as a two-byte value. The RLE compressed data follows, with each
-#	scan line compressed separately. The RLE compression is the same
-#	compression algorithm used by the Macintosh ROM routine PackBits,
-#	and the TIFF standard.
-#
-#	Table 10-8: Image data
-#	Length 		Name 		Description
-#
-#	2 bytes 	Compression 	Compression method. Raw data = 0, RLE compressed = 1.
-#	Variable 	Data 		The image data.
-#	'''
-#
-#	def __init__(self, stream):
-#		'''
-#		stream is opened file to be readed
-#		'''
-#		self.logger = logging.getLogger("pypsd.sections.PSDImageData")
-#		self.logger.debug("__init__ method. In: stream=%s" % stream)
-#		self.compression = None
-#		self.bytesleft = None
-#		super(PSDImageData, self).__init__(stream)
-#
-#	def parse(self):
-#		self.compression = ImageDataCompression(self.readShortInt())
-#		self.bytesleft = self.getSize() - self.steam.tell()
-#		self.logger.debug("parse method. Compression=%s" % self.compression)
-#
-#
-#	def __str__(self):
-#		return ("==Image Data==\nCompression: %s\n"
-#			"Bytes Left: %d" % (self.compression, self.bytesleft));
-#
-#class ImageDataCompression(CodeMapObject):
-#	def __init__(self, code):
-#		self.logger = logging.getLogger("pypsd.sections.ImageDataCompression")
-#		super(ImageDataCompression, self).__init__(code,
-#											{0:"Raw data", 1:"RLE compressed"})
-#		self.logger.debug("__init__ method. In: code=%s, name=%s" %
-#						(self.code, self.name ))
-
+		if needReadPlaneInfo:
+			'''
+			2 bytes.
+			Compression. 
+			0 = Raw Data, 
+			1 = RLE compressed, 
+			2 = ZIP without prediction, 
+			3 = ZIP with prediction.
+	  		'''
+			compression = self.readShortInt()
+			validate("Compression", compression, range=[0,3])
+		
+			'''
+			If the compression code is 1, the image data starts with the byte 
+			counts for all the scan lines in the channel (LayerBottom LayerTop), 
+			with each count stored as a two byte value.
+			'''	
+			rleEncoded = compression == 1 
+			if rleEncoded: #RLE compressed
+				if not lineLengths:
+					lineLengths = []
+					for h in range(self.rectangle["height"]):
+						lineLength = self.readShortInt()
+						lineLengths.append(lineLength)
+			planeNum = 0
+			#TODO raise NotImplementedError("Zip compression is not working yet.")
+		else:
+			rleEncoded = lineLengths != None
+		
+		if rleEncoded:
+			imageData = self.readPlaneCompressed(lineLengths, planeNum)
+		else:
+			imageData = self.readBytesList(size)
+		
+		return imageData
+	
+	def readPlaneCompressed(self, lineLengths, planeNum):
+		w = self.rectangle["width"]
+		h = self.rectangle["height"]
+		b = [] #w * h
+		s = [] #w * 2
+		pos = 0
+		lineIndex = planeNum * h
+		for i in range(h):
+			len = lineLengths[lineIndex]
+			lineIndex += 1
+			s = self.readBytesList(len)
+			self.decodeRLE(s, 0, len, b, pos) 
+			pos += w
+		
+		return b
+	
+	def decodeRLE(self, src, sindex, slen, dst, dindex):
+		try:
+			max = sindex + slen
+			while sindex < max:
+				b = src[sindex]
+				sindex += 1
+				n = int(b)
+				if n < 0:
+					n = 1 - n
+					b = src[sindex]
+					sindex += 1
+					for i in range(n):
+						dst[dindex] = b
+						dindex += 1
+				else:
+					n = n + 1
+					dst[dindex:dindex+n] = src[sindex:sindex+n]
+					dindex += n
+					sindex += n
+		except Exception:
+			raise BaseException("RLE Decoding fatal error.")
+	
+	def makeImage(self):
+		pass
+	
+	def __str__(self):
+		return ("\n=== Layer - %s ===\n"
+			    "Parent: %s\n"
+			   "Id: %d\n"
+			   "Type: %s\n"
+		       "Opacity: %d\n"
+		       "Rectangle:\n"
+		       "\theight, width: %d, %d\n"
+		       "\ttop, left: %d, %d\n"
+		       "Visible: %s\n"
+		       "Obsolete: %s\n"
+	           "Clipping: %s\n"
+	           "Transporent Protected: %s\n" 
+	           "Pixel Data Irrelevant: %s\n"
+	           "Channels Info: %s\nBlend Mode: %s" % 
+	           (self.name, (self.parent.layerId if self.parent else "None"), 
+			    self.layerId, self.layerType,
+			    self.opacity, self.rectangle["height"], 
+			    self.rectangle["width"], self.rectangle["top"], 
+			    self.rectangle["left"], self.visible, self.obsolete,
+			    self.clipping, self.transpProtected, self.pixelDataIrrelevant,
+			    self.channelsInfo, self.blendMode))
+		

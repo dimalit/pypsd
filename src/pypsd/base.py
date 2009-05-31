@@ -28,6 +28,11 @@ def int2Binary(n):
 
 	return bStr
 
+def makeEven(n):
+	if n & 0x01 != 0:
+		n += 1
+	return n
+
 class PSDParserBase():
 	
 	def __init__(self, stream = None):
@@ -91,22 +96,38 @@ class PSDParserBase():
 		self.debugMethodInOut("readTinyInt", result=tinyInt)
 		return tinyInt
 
-	def readInt(self):
+	def readInt(self, returnEven=False):
 		value = self.readCustomInt(4)
+		if returnEven:
+			value = makeEven(value)
 		
 		self.debugMethodInOut("readInt", result=value)
 		return value
-
-	def readBits(self, size):
+	
+	def readBytesList(self, size):
 		barray = bytearray(size)
-		self.stream.readinto(barray)
+		bytesRead = self.stream.readinto(barray)
+		self.logger.debug("Bytes read: %d" % bytesRead)
 		result = list(barray)
 		
 		self.debugMethodInOut("readBits", {"size":size}, result)
 		return result
+	
+	def readBits(self, size):
+		i = self.readCustomInt(size)
+		bits = [int(b) for b in bin(i)[2:]]
+		bits.reverse()
+		moreZeros = size * 8 - len(bits)
+		bits = bits + [0] * moreZeros
+		
+		self.debugMethodInOut("readBits", {"size":size}, bits)
+		return bits
 
 	def readString(self, size):
-		value = str(self.stream.read(size), "UTF-8")
+		dataRead = self.stream.read(size)
+		g = [s for s in dataRead]
+		value = str(dataRead, "UTF-8")
+		value = "".join([s for s in value if ord(s) != 0]) #0 is padding char
 		self.debugMethodInOut("readString", {"size":size}, value)
 		
 		return value
@@ -125,6 +146,12 @@ class PSDParserBase():
 		return {"top":top, "left":left, "bottom":bottom, "right":right, 
 			    "width":width, "height":height}
 	
+	def getPos(self):
+		return self.stream.tell()
+	
+	def skipRest(self, blockStart, blockSize):
+		self.skip(blockStart + blockSize - self.getPos())
+	
 	def getCodeLabelPair(self, code, map):		
 		return {"code":code, "label":map[code]}
 	
@@ -132,11 +159,11 @@ class PSDParserBase():
 		message = "%s method." % label
 		
 		if invars:
-			invars = ["%s=%s" % (name, vars[name]) for name in vars]
+			invars = ["%s=%s" % (name, invars[name]) for name in invars]
 			message += "In: %s" % ", ".join(invars)
 			
 		if result:
-			message += "Out: %s" % result
+			message += " Out: %s" % result
 			
 		self.logger.debug(message)
 

@@ -41,22 +41,28 @@ class PSDFile(object):
 		if not os.path.exists(self.fileName):
 			raise IOError("Can't find file specified.")
 
-		with open(self.fileName, mode = 'rb') as f:
+		with open(self.fileName, mode = 'rb') as stream:
 			self.logger.debug("File size is: %d bytes" %
 							os.path.getsize(self.fileName))
 
-			self.header = PSDHeader(f)
+			self.header = PSDHeader(stream)
 			self.logger.debug("Header:\n%s" % self.header)
 
-			self.colorMode = PSDColorMode(f)
+			self.colorMode = PSDColorMode(stream)
 			self.logger.debug("Color mode:%s" % self.colorMode)
-
-			self.imageResources = PSDImageResources(f)
-
-			self.layerMask = PSDLayerMask(f)
-
-			#self.imageData = PSDImageData(f)
-
+			
+			self.imageResources = PSDImageResources(stream)
+			self.logger.debug("Image Resources:%s" % self.imageResources)
+			
+			self.layerMask = PSDLayerMask(stream)
+			self.logger.debug("Layer Masks:%s" % self.layerMask)
+			
+			self.layerMask.groupLayers()
+			
+			for l in self.layerMask.layers:
+				self.logger.debug("Layer %s\t%d Parent %s" % (l.name, l.layerId, 
+					(l.parent.layerId if l.parent else "None")))
+	
 	def __str__(self):
 		return ("File Name:%s\n%s\n%s\n%s\n%s\n%s" %
 			(self.fileName,

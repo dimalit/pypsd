@@ -1,9 +1,7 @@
 import os
 
-
 import logging
 import logging.config
-
 
 from pypsd.sections import *
 
@@ -41,7 +39,9 @@ class PSDFile(object):
 		if not os.path.exists(self.fileName):
 			raise IOError("Can't find file specified.")
 
-		with open(self.fileName, mode = 'rb') as stream:
+		#2.6 with open(self.fileName, mode = 'rb') as stream:
+		try:
+			stream = open(self.fileName, mode = 'rb')
 			self.logger.debug("File size is: %d bytes" %
 							os.path.getsize(self.fileName))
 
@@ -62,7 +62,9 @@ class PSDFile(object):
 			for l in self.layerMask.layers:
 				self.logger.debug("Layer %s\t%d Parent %s" % (l.name, l.layerId, 
 					(l.parent.layerId if l.parent else "None")))
-	
+		finally:
+			stream.close()
+		
 	def save(self, dest=None, saveInvis=False):
 		if not dest:
 			dest = os.getcwd()

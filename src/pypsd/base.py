@@ -1,15 +1,16 @@
 import unittest
 import logging
-import io
+#Python 3.0: import io
 import os.path
 
-module_logger = logging.getLogger("pypsd.base")
+module_logger = logging.getLogger("pypsd.sectionbase")
 
 def bytesToInt(bytes):
 	shift = 0
 	value = 0
 	bb = reversed(bytes)
 	for b in bb:
+		b = ord(b) #line for Python 2.5
 		value += (b << shift)
 		shift += 8
 
@@ -17,7 +18,7 @@ def bytesToInt(bytes):
 	return value
 
 def int2Binary(n):
-	'''convert denary integer n to binary string bStr'''
+	'''convert integer n to binary string bStr'''
 
 	bStr = ''
 	if n < 0: raise ValueError ("must be a positive integer")
@@ -38,7 +39,7 @@ class PSDParserBase(object):
 	def __init__(self, stream = None):
 		self.logger = logging.getLogger("pypsd.base.PSDParserBase")
 
-		self.debugMethodInOut("__init__", {"stream":stream})
+		self.debugMethodInOut("__init__")
 
 		if stream is None: #or not isinstance(stream, io.BufferedReader):
 			raise BaseException("File object should be specified.")
@@ -75,8 +76,9 @@ class PSDParserBase(object):
 		
 	def readCustomInt(self, size):
 		#Python 3: value = bytesToInt(self.stream.read(size))
-		bb = bytearray(size)
-		self.stream.readinto(bb)
+		#Python 2.6: bb = bytearray(size)
+		#Python 2.6: self.stream.readinto(bb)
+		bb = self.stream.read(size)
 		value = bytesToInt(bb)
 		
 		self.debugMethodInOut("readCustomInt", {"size":size}, result=value)
@@ -108,17 +110,19 @@ class PSDParserBase(object):
 		return value
 	
 	def readBytesList(self, size):
-		barray = bytearray(size)
-		bytesRead = self.stream.readinto(barray)
-		self.logger.debug("Bytes read: %d" % bytesRead)
-		result = list(barray)
+		#Python 2.6: barray = bytearray(size)
+		#Python 2.6: bytesRead = self.stream.readinto(barray)
+		bytesRead = self.stream.read(size)
+		self.logger.debug("Bytes read: %s" % bytesRead)
+		result = [ord(b) for b in bytesRead]
 		
 		self.debugMethodInOut("readBits", {"size":size}, result)
 		return result
 	
 	def readBits(self, size):
 		i = self.readCustomInt(size)
-		bits = [int(b) for b in bin(i)[2:]]
+		#Python 2.6: bits = [int(b) for b in bin(i)[2:]]
+		bits = [int(b) for b in int2Binary(i)]
 		bits.reverse()
 		moreZeros = size * 8 - len(bits)
 		bits = bits + [0] * moreZeros
@@ -128,7 +132,6 @@ class PSDParserBase(object):
 
 	def readString(self, size):
 		dataRead = self.stream.read(size)
-		g = [s for s in dataRead]
 		#Python 3:value = str(dataRead, "UTF-8")
 		value = str(dataRead)  
 		value = "".join([s for s in value if ord(s) != 0]) #0 is padding char
@@ -200,9 +203,10 @@ class PSDParserBase(object):
 
 class PSDBaseTest(unittest.TestCase):
 	def testBytesToInt(self):
-		value1 = bytesToInt(b'\x00\x01\x02\x03')
+		#Python 2.6: b''
+		value1 = bytesToInt('\x00\x01\x02\x03')
 		self.failUnlessEqual(0x10203, value1)
-		value2 = bytesToInt(b'\xff\x14\x2a\x10')
+		value2 = bytesToInt('\xff\x14\x2a\x10')
 		self.failUnlessEqual(0xff142a10, value2)
 
 

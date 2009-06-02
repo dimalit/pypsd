@@ -1,6 +1,6 @@
 import logging
 from pypsd.base import PSDParserBase
-import io
+#Python 3: import io
 from PIL import Image
 
 def validate(label, value, range=None, mustBe=None, list=None):
@@ -42,10 +42,10 @@ class PSDHeader(PSDParserBase):
 
 	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDHeader")
-		self.debugMethodInOut("__init__", {"stream":stream})
+		self.debugMethodInOut("__init__")
 		
-		if stream is None or not isinstance(stream, io.BufferedReader) and \
-		  stream.tell() != 0:
+		#Python 3: or not isinstance(stream, io.BufferedReader) and \
+		if stream is None and stream.tell() != 0:
 			raise TypeError("Argument should be file pointer and it should be "
 							"at the beginning of file")
 
@@ -161,7 +161,7 @@ class PSDColorMode(PSDParserBase):
 
 	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDColorMode")
-		self.debugMethodInOut("__init__", {"stream":stream})
+		self.debugMethodInOut("__init__")
 		
 		self.data = None
 		
@@ -191,7 +191,7 @@ class PSDImageResources(PSDParserBase):
 
 	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDImageResources")
-		self.debugMethodInOut("__init__", {"stream":stream})
+		self.debugMethodInOut("__init__")
 
 		super(PSDImageResources, self).__init__(stream)
 
@@ -215,7 +215,7 @@ class PSDLayerMask(PSDParserBase):
 
 	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayerMask")
-		self.debugMethodInOut("__init__", {"stream":stream})
+		self.debugMethodInOut("__init__")
 
 		self.layers = []
 
@@ -295,7 +295,7 @@ class PSDLayer(PSDParserBase):
 	'''
 	def __init__(self, stream):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayer")
-		self.debugMethodInOut("__init__", {"stream":stream})
+		self.debugMethodInOut("__init__")
 
 		'''Channel information. list(tuple(channelId, Length))'''
 		self.channelsInfo = []

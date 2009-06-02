@@ -1,10 +1,10 @@
 import logging
 import unittest
 
-from psdfile import PSDFile
+from pypsd.psdfile import PSDFile
 from pypsd.sections import *
 
-logging.config.fileConfig("../conf/logging.conf")
+logging.config.fileConfig("./conf/logging.conf")
 
 class PSDTest(unittest.TestCase):
 	def setUp(self):

@@ -18,7 +18,7 @@ class PSDFile(object):
 	- Image Data
 	'''
 
-	def __init__(self, fileName = None):
+	def __init__(self, fileName = None, stream = None):
 		self.logger = logging.getLogger("pypsd.psdfile.PSDFile")
 		self.logger.debug("__init__ method. In: fileName=%s" % fileName)
 		self.header = None
@@ -27,21 +27,29 @@ class PSDFile(object):
 		self.layerMask = None
 		self.imageData = None
 
-		self.fileName = fileName
+		if stream:
+			self.stream = stream
+		else:
+			self.fileName = fileName
 
 	def parse(self):
 		'''
 		Parse PDF file and fill all self field.
 		'''
-		if self.fileName is None:
-			raise BaseException("File Name not specified.")
-
-		if not os.path.exists(self.fileName):
-			raise IOError("Can't find file specified.")
+		if not self.stream:
+			if self.fileName is None:
+				raise BaseException("File Name not specified.")
+	
+			if not os.path.exists(self.fileName):
+				raise IOError("Can't find file specified.")
 
 		#2.6 with open(self.fileName, mode = 'rb') as stream:
 		try:
-			stream = open(self.fileName, mode = 'rb')
+			if not self.stream:
+				stream = open(self.fileName, mode = 'rb')
+			else:
+				stream = self.stream
+			
 			self.logger.debug("File size is: %d bytes" %
 							os.path.getsize(self.fileName))
 
@@ -63,7 +71,8 @@ class PSDFile(object):
 				self.logger.debug("Layer %s\t%d Parent %s" % (l.name, l.layerId, 
 					(l.parent.layerId if l.parent else "None")))
 		finally:
-			stream.close()
+			if not self.stream:
+				stream.close()
 		
 	def save(self, dest=None, saveInvis=False):
 		if not dest:
@@ -98,7 +107,7 @@ class PSDFile(object):
 	
 	def __str__(self):
 		return ("File Name:%s\n%s\n%s\n%s\n%s\n%s" %
-			(self.fileName,
+			(	"",
 				self.header,
 				self.colorMode,
 				self.imageResources,

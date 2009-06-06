@@ -13,7 +13,7 @@ class PSDTest(unittest.TestCase):
 	def testPSDFile(self):
 		psd = PSDFile(self.testPSDFileName)
 		psd.parse()
-		psd.save()
+		#psd.save()
 		
 #		layers = psd.layerMask.layers
 #		self.assertEquals(20, len(layers))

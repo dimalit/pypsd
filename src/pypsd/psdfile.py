@@ -21,16 +21,15 @@ class PSDFile(object):
 	def __init__(self, fileName = None, stream = None):
 		self.logger = logging.getLogger("pypsd.psdfile.PSDFile")
 		self.logger.debug("__init__ method. In: fileName=%s" % fileName)
+		
+		self.stream = stream
+		self.fileName = fileName
+		
 		self.header = None
 		self.colorMode = None
 		self.imageResources = None
 		self.layerMask = None
 		self.imageData = None
-
-		if stream:
-			self.stream = stream
-		else:
-			self.fileName = fileName
 
 	def parse(self):
 		'''
@@ -50,8 +49,11 @@ class PSDFile(object):
 			else:
 				stream = self.stream
 			
-			self.logger.debug("File size is: %d bytes" %
-							os.path.getsize(self.fileName))
+			stream.seek(0,2)
+			streamsize = stream.tell()
+			stream.seek(0)
+			
+			self.logger.debug("File size is: %d bytes" % streamsize)
 
 			self.header = PSDHeader(stream)
 			self.logger.debug("Header:\n%s" % self.header)
@@ -94,14 +96,16 @@ class PSDFile(object):
 			if not layer.visible and not saveInvis:
 				toSave = False
 				
-			if sum(layer.image.size) == 0:
+			if len(layer.image) == 0:
 				toSave = False
 			
 			if toSave:
 				name = layer.name
 				try:
-					image = layer.image
-					image.save("%s/%s.png" % (dest, name), "PNG")
+					buffer = layer.image
+					writer = open("%s/%s.png" % (dest, name), "wb")
+					writer.write(buffer)
+					#image.save("%s/%s.png" % (dest, name), "PNG")
 				except SystemError:
 					self.logger.error("Can't save %s layer." % name)
 	

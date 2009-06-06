@@ -1,7 +1,8 @@
 import logging
 from pypsd.base import PSDParserBase
 #Python 3: import io
-from PIL import Image
+import StringIO
+import png
 
 def validate(label, value, range=None, mustBe=None, list=None):
 	assert label is not None
@@ -551,13 +552,11 @@ class PSDLayer(PSDParserBase):
 			elif channelId == 2:
 				self.channels["b"] = channel
 				
-		if not self.channels["a"]:
-			self.channels["a"] = [255] * self.rectangle["width"] * self.rectangle["height"] 
-			
 		self.debugMethodInOut("getImageData", 
 							  invars={"needReadPlaneInfo":needReadPlaneInfo,
 									  "lineLengths":lineLengths})
-		self.makeImage()
+		#self.makeImage()
+		self.makePngImage()
 		
 				
 	def readColorPlane(self, needReadPlaneInfo=True, lineLengths=[], planeNum=-1):
@@ -606,14 +605,14 @@ class PSDLayer(PSDParserBase):
 	def readPlaneCompressed(self, lineLengths, planeNum):
 		w = self.rectangle["width"]
 		h = self.rectangle["height"]
-		b = [] #w * h
+		b = [0] * (w*h)
 		s = [] #w * 2
 		pos = 0
 		lineIndex = planeNum * h
 		for i in range(h):
 			len = lineLengths[lineIndex]
 			lineIndex += 1
-			s = self.readBytesList(len)
+			s = self.readBytesList(len) + [0] * (w * 2 - len)
 			self.decodeRLE(s, 0, len, b, pos) 
 			pos += w
 		
@@ -625,9 +624,9 @@ class PSDLayer(PSDParserBase):
 			while sindex < max:
 				b = src[sindex]
 				sindex += 1
-				n = int(b)
-				if n < 0:
-					n = 1 - n
+				n = b
+				if b > 127:
+					n = 255 - n + 2
 					b = src[sindex]
 					sindex += 1
 					for i in range(n):
@@ -640,20 +639,30 @@ class PSDLayer(PSDParserBase):
 					sindex += n
 		except Exception:
 			raise BaseException("RLE Decoding fatal error.")
-	
-	
-	def makeImage(self):
-		self.image = Image.new("RGBA", (self.rectangle["width"], 
-									    self.rectangle["height"]))
-		imageData = []
-		for i, a in enumerate(self.channels["a"]):
-			r = self.channels["r"][i]
-			g = self.channels["g"][i]
-			b = self.channels["b"][i]
-			rgba = (r,g,b,a)
-			imageData.append(rgba)
-			
-		self.image.putdata(imageData)
+
+		
+	def makePngImage(self):
+		width = self.rectangle["width"] 
+		height = self.rectangle["height"]
+		if width == 0 or height == 0:
+			return
+		 
+		png_writer = png.Writer(width=width, 
+							   height=height, 
+							   greyscale=False, 
+							   alpha=True, 
+							   bitdepth = 8, #TODO HardCode. Take from Header.
+							   )
+		pixelsData = []
+		for i in range(height * width):
+			for c in ["r", "g","b","a"]:
+				pixelsData += [self.channels[c][i]] if len(self.channels[c]) > i else [255]
+		
+		buffer = StringIO.StringIO()
+		png_writer.write_array(buffer, pixelsData)
+		self.image = buffer.getvalue()
+		
+		buffer.close()
 
 	
 	def __str__(self):

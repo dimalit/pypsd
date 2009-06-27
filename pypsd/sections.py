@@ -1,8 +1,8 @@
 import logging
-from pypsd.base import PSDParserBase
+from base import PSDParserBase
 #Python 3: import io
 import StringIO
-import png
+from PIL import Image
 
 def validate(label, value, range=None, mustBe=None, list=None):
 	assert label is not None
@@ -555,8 +555,8 @@ class PSDLayer(PSDParserBase):
 		self.debugMethodInOut("getImageData", 
 							  invars={"needReadPlaneInfo":needReadPlaneInfo,
 									  "lineLengths":lineLengths})
-		#self.makeImage()
-		self.makePngImage()
+		self.makeImage()
+		#self.makePngImage()
 		
 				
 	def readColorPlane(self, needReadPlaneInfo=True, lineLengths=[], planeNum=-1):
@@ -640,29 +640,41 @@ class PSDLayer(PSDParserBase):
 		except Exception:
 			raise BaseException("RLE Decoding fatal error.")
 
+	def makeImage(self):
+		self.image = Image.new("RGBA", (self.rectangle["width"], 
+		                                self.rectangle["height"]))
+		imageData = []
+		for i, a in enumerate(self.channels["a"]):
+			r = self.channels["r"][i]
+			g = self.channels["g"][i]
+			b = self.channels["b"][i]
+			rgba = (r,g,b,a)
+			imageData.append(rgba)
+		        
+		self.image.putdata(imageData)
 		
-	def makePngImage(self):
-		width = self.rectangle["width"] 
-		height = self.rectangle["height"]
-		if width == 0 or height == 0:
-			return
-		 
-		png_writer = png.Writer(width=width, 
-							   height=height, 
-							   greyscale=False, 
-							   alpha=True, 
-							   bitdepth = 8, #TODO HardCode. Take from Header.
-							   )
-		pixelsData = []
-		for i in range(height * width):
-			for c in ["r", "g","b","a"]:
-				pixelsData += [self.channels[c][i]] if len(self.channels[c]) > i else [255]
-		
-		buffer = StringIO.StringIO()
-		png_writer.write_array(buffer, pixelsData)
-		self.image = buffer.getvalue()
-		
-		buffer.close()
+#	def makePngImage(self):
+#		width = self.rectangle["width"] 
+#		height = self.rectangle["height"]
+#		if width == 0 or height == 0:
+#			return
+#		 
+#		png_writer = png.Writer(width=width, 
+#							   height=height, 
+#							   greyscale=False, 
+#							   alpha=True, 
+#							   bitdepth = 8, #TODO HardCode. Take from Header.
+#							   )
+#		pixelsData = []
+#		for i in range(height * width):
+#			for c in ["r", "g","b","a"]:
+#				pixelsData += [self.channels[c][i]] if len(self.channels[c]) > i else [255]
+#		
+#		buffer = StringIO.StringIO()
+#		png_writer.write_array(buffer, pixelsData)
+#		self.image = buffer.getvalue()
+#		
+#		buffer.close()
 
 	
 	def __str__(self):

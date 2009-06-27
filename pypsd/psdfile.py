@@ -3,7 +3,7 @@ import os
 import logging
 import logging.config
 
-from pypsd.sections import *
+from sections import *
 
 #logging.config.fileConfig("conf/logging.conf")
 
@@ -82,30 +82,38 @@ class PSDFile(object):
 		
 		psdBaseName = os.path.basename(self.fileName)
 		psdFileName = os.path.splitext(psdBaseName)
-		dest = "%s/%s" % (dest, psdFileName[0])
+		dest = "%s/../samples/%s" % (dest, psdFileName[0])
 			
 		if not os.path.exists(dest):
 			os.mkdir(dest)
 		
+		os.chdir(dest)
+		
 		for layer in self.layerMask.layers:
 			toSave = True
-			
 			if layer.layerType != 0:
 				toSave = False
-				
+				if layer.layerType["code"] in [1, 2]:
+					subdir = "./%s" % layer.name
+					if not os.path.exists(subdir):
+						os.mkdir(subdir)
+					os.chdir(subdir)
+				elif layer.layerType["code"] == 3:
+					os.chdir("./..")
+			print os.getcwd()
 			if not layer.visible and not saveInvis:
 				toSave = False
 				
-			if len(layer.image) == 0:
+			if sum(layer.image.size) == 0:
 				toSave = False
 			
 			if toSave:
 				name = layer.name
 				try:
-					buffer = layer.image
-					writer = open("%s/%s.png" % (dest, name), "wb")
-					writer.write(buffer)
-					#image.save("%s/%s.png" % (dest, name), "PNG")
+					#buffer = layer.image
+					#writer = open("%s/%s.png" % (dest, name), "wb")
+					#writer.write(buffer)
+					layer.image.save("%s/%s.png" % (os.getcwd(), name), "PNG")
 				except SystemError:
 					self.logger.error("Can't save %s layer." % name)
 	

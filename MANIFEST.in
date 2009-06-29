@@ -3,3 +3,4 @@ include pavement.py
 include paver-minilib.zip
 recursive-include samples *
 recursive-include pypsd *
+recursive-include pypsd/conf *

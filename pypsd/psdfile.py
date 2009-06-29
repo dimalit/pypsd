@@ -5,7 +5,8 @@ import logging.config
 
 from sections import *
 
-#logging.config.fileConfig("conf/logging.conf")
+import sys
+logging.config.fileConfig("%s/conf/logging.conf" % os.path.dirname(__file__))
 
 class PSDFile(object):
 	'''
@@ -82,7 +83,7 @@ class PSDFile(object):
 		
 		psdBaseName = os.path.basename(self.fileName)
 		psdFileName = os.path.splitext(psdBaseName)
-		dest = "%s/../samples/%s" % (dest, psdFileName[0])
+		dest = "%s/%s" % (dest, psdFileName[0])
 			
 		if not os.path.exists(dest):
 			os.mkdir(dest)
@@ -91,16 +92,16 @@ class PSDFile(object):
 		
 		for layer in self.layerMask.layers:
 			toSave = True
-			if layer.layerType != 0:
+			type = layer.layerType["code"]
+			if type != 0:
 				toSave = False
-				if layer.layerType["code"] in [1, 2]:
+				if type in [1, 2]:
 					subdir = "./%s" % layer.name
 					if not os.path.exists(subdir):
 						os.mkdir(subdir)
 					os.chdir(subdir)
-				elif layer.layerType["code"] == 3:
+				elif type == 3:
 					os.chdir("./..")
-			print os.getcwd()
 			if not layer.visible and not saveInvis:
 				toSave = False
 				
@@ -108,6 +109,7 @@ class PSDFile(object):
 				toSave = False
 			
 			if toSave:
+				layer.saved = True
 				name = layer.name
 				try:
 					#buffer = layer.image
@@ -116,6 +118,8 @@ class PSDFile(object):
 					layer.image.save("%s/%s.png" % (os.getcwd(), name), "PNG")
 				except SystemError:
 					self.logger.error("Can't save %s layer." % name)
+		
+		return psdFileName[0]
 	
 	def __str__(self):
 		return ("File Name:%s\n%s\n%s\n%s\n%s\n%s" %

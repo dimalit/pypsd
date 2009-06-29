@@ -4,7 +4,7 @@ from paver.easy import *
 setup(
     name="pypsd",
     packages=['pypsd'],
-    package_data={'pypsd': ['/pypsd/conf/*.conf', 'samples/*.psd', 'docs/*.pdf']},
+    package_data={'pypsd': ['pypsd/conf/*.conf', 'samples/*.psd', 'docs/*.pdf']},
     version="0.1",
     url="http://code.google.com/p/pypsd",
     author="Aleksandr Motsjonov",

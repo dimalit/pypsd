@@ -1,3 +1,4 @@
+from __future__ import division
 import logging
 from base import PSDParserBase
 #Python 3: import io
@@ -55,6 +56,7 @@ class PSDHeader(PSDParserBase):
 		self.channelsNum = None
 		self.rows = None
 		self.width = None
+		self.height = None
 		self.depth = None
 		self.colorMode = None
 
@@ -270,7 +272,8 @@ class PSDLayerMask(PSDParserBase):
 		parents = [None]
 		for layer in self.layers:
 			layer.parent = parents[-1]
-			if layer.layerType == 0:
+			layer.parents = parents[1:]
+			if layer.layerType["code"] == 0:
 				pass
 			elif layer.layerType["code"] == 3:
 				del parents[-1]
@@ -320,8 +323,9 @@ class PSDLayer(PSDParserBase):
 		self.channels = {}
 		
 		self.layerId = None
-		self.layerType = 0
+		self.layerType = {"code":0, "label":"other"}
 		self.parent = None
+		self.saved = False
 		
 		super(PSDLayer, self).__init__(stream)
 	
@@ -531,7 +535,7 @@ class PSDLayer(PSDParserBase):
 		typesMap = {0:"other", 1:"open folder", 2:"closed folder", 
 				    3:"bounding section divider"}
 		typeCode = self.readInt()
-		self.layerType = self.getCodeLabelPair(typeCode, typesMap)  
+		self.layerType = self.getCodeLabelPair(typeCode, typesMap)
 	
 	
 	def getImageData(self, needReadPlaneInfo=True, lineLengths=[]):
@@ -540,11 +544,12 @@ class PSDLayer(PSDParserBase):
 		layer. The layers are in the same order as in the layer information.
 		'''
 		self.channels = {"a":[],"r":[],"g":[],"b":[]}
+		opacity_devider = self.opacity / 255
 		for i, channelTuple in enumerate(self.channelsInfo):
 			channelId, length = channelTuple
 			channel = self.readColorPlane(needReadPlaneInfo, lineLengths, i)
 			if channelId == -1:
-				self.channels["a"] = channel 
+				self.channels["a"] = [int(ch * opacity_devider) for ch in channel]  
 			elif channelId == 0:
 				self.channels["r"] = channel
 			elif channelId == 1:
@@ -641,17 +646,28 @@ class PSDLayer(PSDParserBase):
 			raise BaseException("RLE Decoding fatal error.")
 
 	def makeImage(self):
-		self.image = Image.new("RGBA", (self.rectangle["width"], 
-		                                self.rectangle["height"]))
+		width = self.rectangle["width"] 
+		height = self.rectangle["height"]
+		
+		self.image = Image.new("RGBA", (width, height))
 		imageData = []
-		for i, a in enumerate(self.channels["a"]):
-			r = self.channels["r"][i]
-			g = self.channels["g"][i]
-			b = self.channels["b"][i]
-			rgba = (r,g,b,a)
-			imageData.append(rgba)
-		        
+		for i in range(height * width):
+			rgba = [255] * 4
+			for j, c in enumerate(["r", "g","b","a"]):
+				if len(self.channels[c]) > i:
+					rgba[j] = self.channels[c][i]
+			imageData.append(tuple(rgba))
+		
 		self.image.putdata(imageData)
+		
+#		for i, a in enumerate(self.channels["a"]):
+#			r = self.channels["r"][i]
+#			g = self.channels["g"][i]
+#			b = self.channels["b"][i]
+#			rgba = (r,g,b,a)
+#			imageData.append(rgba)
+		        
+		
 		
 #	def makePngImage(self):
 #		width = self.rectangle["width"] 

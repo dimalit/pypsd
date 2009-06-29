@@ -1,14 +1,9 @@
 import logging
 import unittest
-
-import pprint
-import sys
-pprint.pprint(sys.path)
-
 from psdfile import PSDFile
 from sections import *
 
-logging.config.fileConfig("./conf/logging.conf")
+logging.config.fileConfig("%s/conf/logging.conf" % os.path.dirname(__file__))
 
 class PSDTest(unittest.TestCase):
 	def setUp(self):
@@ -20,7 +15,7 @@ class PSDTest(unittest.TestCase):
 
 		psd = PSDFile(self.testPSDFileName)
 		psd.parse()
-		psd.save()
+		psd.save(dest="../samples/")
 		
 		layers = psd.layerMask.layers
 		self.assertEquals(20, len(layers))

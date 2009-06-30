@@ -5,7 +5,6 @@ import os.path
 from psdfile import PSDFile, make_valid_filename
 from sections import *
 
-
 logging.config.fileConfig("%s/conf/logging.conf" % os.path.dirname(__file__))
 
 class PSDTest(unittest.TestCase):

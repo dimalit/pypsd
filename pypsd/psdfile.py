@@ -96,13 +96,16 @@ class PSDFile(object):
 			if not self.stream:
 				stream.close()
 
-	def save(self, dest=None, saveInvis=False):
+	def save(self, dest=None, saveInvis=False, dirName=None):
 		if not dest:
 			dest = os.getcwd()
 
-		psdBaseName = os.path.basename(self.fileName)
-		psdFileName = os.path.splitext(psdBaseName)
-		dest = "%s/%s" % (dest, psdFileName[0])
+		if not dirName:
+			psdBaseName = os.path.basename(self.fileName)
+			psdFileName = os.path.splitext(psdBaseName)
+			dirName = psdFileName[0] 
+
+		dest = os.path.join(dest, dirName)
 
 		if not os.path.exists(dest):
 			os.mkdir(dest)
@@ -141,8 +144,7 @@ class PSDFile(object):
 					layer.image.save("%s/%s.png" % (os.getcwd(), name), "PNG")
 				except SystemError:
 					self.logger.error("Can't save %s layer." % name)
-
-		return psdFileName[0]
+		return dirName
 
 	def __str__(self):
 		return ("File Name:%s\n%s\n%s\n%s\n%s\n%s" %

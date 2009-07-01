@@ -9,8 +9,9 @@ logging.config.fileConfig("%s/conf/logging.conf" % os.path.dirname(__file__))
 
 class PSDTest(unittest.TestCase):
 	def setUp(self):
-		self.testPSDFileName = "./../samples/5x5.psd"
-
+		self.testPSDFileName2 = "./../samples/5x5.psd" 
+		
+	
 	def test_make_valid_filename(self):
 		path = "%s/test/\*?:file.tmp" % tempfile.gettempdir()
 		real_path = "%s/testfile.tmp" % tempfile.gettempdir()
@@ -32,17 +33,29 @@ class PSDTest(unittest.TestCase):
 		layer_id = 15
 		test_layer_name = make_valid_filename(path, layer_name, layer_id)
 		self.assertEquals("%s%d" %(right_layer_name, layer_id), test_layer_name)
-
+	
 	def testPSDFile(self):
+		testPSDFilesDir = "./../samples/"
+		for entry in os.listdir(testPSDFilesDir):
+			ispsd = os.path.splitext(entry)[1].lower()
+			filepath = os.path.join(testPSDFilesDir, entry)
+			if os.path.isfile(filepath) and ispsd == ".psd":
+				psd = PSDFile(filepath)
+				psd.parse()
+				psd.save(dest="../samples/")
+				os.chdir("..")
+		
+		
+		testPSDFileName = "./../samples/5x5.psd"
 		psd = PSDFile()
 		self.failUnlessRaises(BaseException, psd.parse)
 
-		psd = PSDFile(self.testPSDFileName)
+		psd = PSDFile(testPSDFileName)
 		psd.parse()
 		psd.save(dest="../samples/")
 
 		layers = psd.layerMask.layers
-		self.assertEquals(24, len(layers))
+		self.assertEquals(25, len(layers))
 
 		defaults = {"layerType":0,
 					"opacity":255,

@@ -624,26 +624,26 @@ class PSDLayer(PSDParserBase):
 		return b
 	
 	def decodeRLE(self, src, sindex, slen, dst, dindex):
-		try:
-			max = sindex + slen
-			while sindex < max:
+		#try:
+		max = sindex + slen
+		while sindex < max:
+			b = src[sindex]
+			sindex += 1
+			n = b
+			if b > 127:
+				n = 255 - n + 2
 				b = src[sindex]
 				sindex += 1
-				n = b
-				if b > 127:
-					n = 255 - n + 2
-					b = src[sindex]
-					sindex += 1
-					for i in range(n):
-						dst[dindex] = b
-						dindex += 1
-				else:
-					n = n + 1
-					dst[dindex:dindex+n] = src[sindex:sindex+n]
-					dindex += n
-					sindex += n
-		except Exception:
-			raise BaseException("RLE Decoding fatal error.")
+				for i in range(n):
+					dst[dindex] = b
+					dindex += 1
+			else:
+				n = n + 1
+				dst[dindex:dindex+n] = src[sindex:sindex+n]
+				dindex += n
+				sindex += n
+		#except Exception:
+		#	raise BaseException("RLE Decoding fatal error.")
 
 	def makeImage(self):
 		width = self.rectangle["width"] 

@@ -60,10 +60,11 @@ class PSDParserBase(object):
 		'''
 		Start parse Method of the child.
 		'''
+
 		self.parse()
 
 	def parse(self):
-		raise NotImplementedError()
+		pass
 	
 	def skip(self, size):
 		self.stream.seek(size, 1) #whence=
@@ -74,26 +75,24 @@ class PSDParserBase(object):
 		self.skip(size)
 		self.debugMethodInOut("skipIntSize",result="skipped=%s" % size)
 		
-	def readCustomInt(self, size):
+	def readCustomInt(self, size, negative=False):
 		#Python 3: value = bytesToInt(self.stream.read(size))
 		#Python 2.6: bb = bytearray(size)
 		#Python 2.6: self.stream.readinto(bb)
 		bb = self.stream.read(size)
 		value = bytesToInt(bb)
 		
+		if negative:
+			if value > pow(2, (size * 8) - 1):
+				value = int(-(pow(2, size * 8) - value))
+		
 		self.debugMethodInOut("readCustomInt", {"size":size}, result=value)
 		return value
 
 	def readShortInt(self):
-		ch1 = self.readCustomInt(1)
-		ch2 = self.readCustomInt(1)
-		if ch1 > 0:
-			bytes = -(256 - ch1)
-		else:
-			bytes = ch2
-		
-		self.debugMethodInOut("readShortInt", result=bytes)
-		return bytes
+		value = self.readCustomInt(2, negative=True)
+		self.debugMethodInOut("readShortInt", result=value)
+		return value
 	
 	def readTinyInt(self):
 		tinyInt = self.readCustomInt(1)
@@ -101,8 +100,9 @@ class PSDParserBase(object):
 		self.debugMethodInOut("readTinyInt", result=tinyInt)
 		return tinyInt
 
-	def readInt(self, returnEven=False):
-		value = self.readCustomInt(4)
+	def readInt(self, returnEven=False, isLong=True):
+		value = self.readCustomInt(4, negative=not isLong)
+		
 		if returnEven:
 			value = makeEven(value)
 		
@@ -143,10 +143,10 @@ class PSDParserBase(object):
 		return os.path.getsize(self.stream.name)
 	
 	def getRectangle(self):
-		top = self.readInt()
-		left = self.readInt()
-		bottom = self.readInt()
-		right  = self.readInt()
+		top = self.readInt(isLong=False)
+		left = self.readInt(isLong=False)
+		bottom = self.readInt(isLong=False)
+		right  = self.readInt(isLong=False)
 		width  = right-left
 		height = bottom-top
 		
@@ -208,7 +208,26 @@ class PSDBaseTest(unittest.TestCase):
 		self.failUnlessEqual(0x10203, value1)
 		value2 = bytesToInt('\xff\x14\x2a\x10')
 		self.failUnlessEqual(0xff142a10, value2)
-
+	
+	def testReadCustomInt(self):
+		from base import PSDParserBase
+		from StringIO import StringIO
+		
+		stream = StringIO()
+		stream.write('\xff\xff\xff\xfe')
+		stream.write('\xff\xff\xff\xff')
+		stream.write('\xf0\x00\x00\x00')
+		stream.write('\xff\xff\xff\xfe')
+		stream.write('\x0f\xff')
+		stream.seek(0)
+		
+		p = PSDParserBase(stream)
+		assert p.readCustomInt(4) == 0xFFFFFFFE
+		assert p.readCustomInt(4, negative=True) == -1
+		assert p.readCustomInt(4, negative=True) == -0x0fffffff-1
+		assert p.readCustomInt(4, negative=True) == -2
+		assert p.readCustomInt(2, negative=True) == 0xfff
+		
 
 if __name__ == "__main__":
 	#import sys;sys.argv = ['', 'Test.testName']

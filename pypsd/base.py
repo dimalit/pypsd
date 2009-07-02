@@ -159,7 +159,7 @@ class PSDParserBase(object):
 	def skipRest(self, blockStart, blockSize):
 		self.skip(blockStart + blockSize - self.getPos())
 	
-	def getCodeLabelPair(self, code, map):		
+	def getCodeLabelPair(self, code, map):
 		return {"code":code, "label":map[code]}
 	
 	def debugMethodInOut(self, label, invars={}, result=None):

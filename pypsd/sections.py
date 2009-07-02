@@ -375,8 +375,8 @@ class PSDLayer(PSDParserBase):
 					"lbrn":"linear burn", "lddg":"linear dodge", 
 					"vLit":"vivid light", "lLit":"linear light", 
 					"pLit":"pin light", "hMix":"hard mix"}
-		blendCode = self.readString(4)
-		self.blendMode = self.getCodeLabelPair(blendCode, blendMap)   
+		blendCode = self.readString(4).strip()
+		self.blendMode = self.getCodeLabelPair(blendCode, blendMap)
 		validate("Blend mode key", blendCode, list=blendMap.keys())
 
 		'''

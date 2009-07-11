@@ -75,23 +75,26 @@ class PSDFile(object):
 
 			self.logger.debug("File size is: %d bytes" % streamsize)
 
-			self.header = PSDHeader(stream)
+			self.header = PSDHeader(stream, self)
 			self.logger.debug("Header:\n%s" % self.header)
 
-			self.colorMode = PSDColorMode(stream)
+			self.colorMode = PSDColorMode(stream, self)
 			self.logger.debug("Color mode:%s" % self.colorMode)
 
-			self.imageResources = PSDImageResources(stream)
+			self.imageResources = PSDImageResources(stream, self)
 			self.logger.debug("Image Resources:%s" % self.imageResources)
 
-			self.layerMask = PSDLayerMask(stream)
+			self.layerMask = PSDLayerMask(stream, self)
 			self.logger.debug("Layer Masks:%s" % self.layerMask)
 
 			self.layerMask.groupLayers()
 
 			for l in self.layerMask.layers:
-				self.logger.debug("Layer %s\t%d Parent %s" % (l.name, l.layerId,
-					(l.parent.layerId if l.parent else "None")))
+				if l.is_base_layer:
+					self.logger.debug("Layer 'Canvas'.")
+				else:
+					self.logger.debug("Layer %s\t%d Parent %s" % (l.name, l.layerId,
+									(l.parent.layerId if l.parent else "None")))
 		finally:
 			if not self.stream:
 				stream.close()

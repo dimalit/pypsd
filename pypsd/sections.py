@@ -42,7 +42,7 @@ class PSDHeader(PSDParserBase):
 	The file header contains the basic properties of the image.
 	'''
 
-	def __init__(self, stream):
+	def __init__(self, stream, psd):
 		self.logger = logging.getLogger("pypsd.sections.PSDHeader")
 		self.debugMethodInOut("__init__")
 		
@@ -60,7 +60,7 @@ class PSDHeader(PSDParserBase):
 		self.depth = None
 		self.colorMode = None
 
-		super(PSDHeader, self).__init__(stream)
+		super(PSDHeader, self).__init__(stream, psd)
 
 	def parse(self):
 		self.debugMethodInOut("parse")
@@ -162,13 +162,13 @@ class PSDColorMode(PSDParserBase):
 	and writing the file.
 	'''
 
-	def __init__(self, stream):
+	def __init__(self, stream, psd):
 		self.logger = logging.getLogger("pypsd.sections.PSDColorMode")
 		self.debugMethodInOut("__init__")
 		
 		self.data = None
 		
-		super(PSDColorMode, self).__init__(stream)
+		super(PSDColorMode, self).__init__(stream, psd)
 		
 		
 	def parse(self):
@@ -192,11 +192,11 @@ class PSDImageResources(PSDParserBase):
 	followed by the data.
 	'''
 
-	def __init__(self, stream):
+	def __init__(self, stream, psd):
 		self.logger = logging.getLogger("pypsd.sections.PSDImageResources")
 		self.debugMethodInOut("__init__")
 
-		super(PSDImageResources, self).__init__(stream)
+		super(PSDImageResources, self).__init__(stream, psd)
 
 
 	def parse(self):
@@ -216,13 +216,13 @@ class PSDLayerMask(PSDParserBase):
 	the length field, which is set to zero.
 	'''
 
-	def __init__(self, stream):
+	def __init__(self, stream, psd):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayerMask")
 		self.debugMethodInOut("__init__")
 
 		self.layers = []
 
-		super(PSDLayerMask, self).__init__(stream)
+		super(PSDLayerMask, self).__init__(stream, psd)
 
 	def parse(self):
 		self.debugMethodInOut("parse")
@@ -232,6 +232,7 @@ class PSDLayerMask(PSDParserBase):
 		Length of the layer and mask information section.
 		'''
 		layerMaskSize = self.readInt()
+		pos = self.getPos()
 		
 		if layerMaskSize > 0:
 			'''
@@ -257,7 +258,7 @@ class PSDLayerMask(PSDParserBase):
 					layersCount = abs(layersCount)
 
 				for i in range(layersCount):
-					layer = PSDLayer(self.stream)
+					layer = PSDLayer(self.stream, self.psd)
 					self.layers.append(layer)
 					self.logger.debug(layer)
 				
@@ -265,8 +266,25 @@ class PSDLayerMask(PSDParserBase):
 					layer.getImageData(needReadPlaneInfo=True, lineLengths=[]) 
 				
 				self.layers.reverse()
-		self.skipIntSize() #TODO get Data
-	
+			
+			self.skipRest(pos, layerMaskSize)
+		
+		baseLayer = PSDLayer(self.stream, self.psd, is_base_layer=True)
+		rle = self.readShortInt() == 1
+		height = baseLayer.rectangle["height"]
+		if rle:
+			nLines = height * len(baseLayer.channelsInfo)
+			lineLengths = []
+			for h in range(nLines):
+				lineLength = self.readShortInt()
+				lineLengths.append(lineLength)
+			baseLayer.getImageData(False, lineLengths)
+		else:
+			baseLayer.getImageData(False)
+		
+		if not self.layers:
+			self.layers.append(baseLayer)
+		
 	
 	def groupLayers(self):
 		parents = [None]
@@ -297,10 +315,11 @@ class PSDLayer(PSDParserBase):
 					See table 10-14.
 	Variable 	Layer name 	Pascal string, padded to a multiple of 4 bytes.
 	'''
-	def __init__(self, stream):
+	def __init__(self, stream, psd, is_base_layer=False):
 		self.logger = logging.getLogger("pypsd.sections.PSDLayer")
 		self.debugMethodInOut("__init__")
 
+		self.is_base_layer = is_base_layer
 		'''Channel information. list(tuple(channelId, Length))'''
 		self.channelsInfo = []
 		'''Blend mode key. blendMode.code, blendMode.label'''
@@ -327,10 +346,13 @@ class PSDLayer(PSDParserBase):
 		self.parent = None
 		self.saved = False
 		
-		super(PSDLayer, self).__init__(stream)
+		super(PSDLayer, self).__init__(stream, psd)
 	
 	def parse(self):
 		self.debugMethodInOut("parse")
+		
+		if self.is_base_layer:
+			return self.parse_base_layer()
 		
 		'''
 		4 * 4 bytes.
@@ -354,6 +376,7 @@ class PSDLayer(PSDParserBase):
 			channelId = self.readShortInt()
 			channelLength = self.readInt()
 			self.channelsInfo.append((channelId, channelLength))
+
 
 		'''
 		4 bytes.
@@ -488,6 +511,27 @@ class PSDLayer(PSDParserBase):
 		 
 		self.skipRest(pos, extraFieldsSize)	
 	
+	def parse_base_layer(self):
+		header = self.psd.header
+		height = header.height
+		width = header.width
+		self.rectangle = {"top":0, "left":0, 
+				  		  "bottom":height, "right":width, 
+    		              "width":width, "height":height}
+		
+		channels = header.channelsNum
+		chanDelta= 3 - channels
+		#If channels = 3, then [0,1,2] if channels = 4, than [-1,0,1,2]
+		self.channelsInfo = [(i, 0) for i in range(chanDelta, channels+chanDelta)]
+		
+		self.blendMode = {"code":"norm", "label":"normal"}
+		
+		self.opacity = 255
+		self.visible = True
+		
+		self.name = 'Canvas'
+		self.layerId = 0
+		
 	
 	def readMetadata(self):
 		'''

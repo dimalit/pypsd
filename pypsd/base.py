@@ -36,7 +36,7 @@ def makeEven(n):
 
 class PSDParserBase(object):
 	
-	def __init__(self, stream = None):
+	def __init__(self, stream = None, psd = None):
 		self.logger = logging.getLogger("pypsd.base.PSDParserBase")
 
 		self.debugMethodInOut("__init__")
@@ -45,6 +45,7 @@ class PSDParserBase(object):
 			raise BaseException("File object should be specified.")
 		
 		self.stream = stream
+		self.psd = psd
 		
 		'''
 		Constants.

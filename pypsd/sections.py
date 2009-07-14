@@ -345,6 +345,7 @@ class PSDLayer(PSDParserBase):
 		self.layerType = {"code":0, "label":"other"}
 		self.parent = None
 		self.saved = False
+		self.text = None
 		
 		super(PSDLayer, self).__init__(stream, psd)
 	
@@ -447,20 +448,13 @@ class PSDLayer(PSDParserBase):
 		extraFieldsSize = self.readInt()
 		pos = self.getPos()
 		
-		'''
-		4 bytes.
-		Size of the data: 36, 20, or 0.
-		If zero, the following fields are not present
-		'''
-		size = self.readInt()
-		validate("Size of the data", size, list=[36, 20, 0])
-		self.skip(size)
-		
+		self.readLayerMask()
+				
 		'''
 		4 bytes.
 		Length of layer blending ranges data
 		'''
-		self.skipIntSize()
+		self.skipIntSize()    
 		
 		'''
 		Variable.
@@ -505,11 +499,121 @@ class PSDLayer(PSDParserBase):
 				Section divider setting
 				'''
 				self.readLayerSectionDevider()
-				
+			elif tag == 'luni':
+				'''
+				Unicode Name
+				'''
+				self.name = self.readUnicodeString()
+			elif tag == "vmsk":
+				'''
+				Vector Mask
+				'''
+				self.readVectorMask()
+			elif tag == 'TySh':
+				self.readTypeTool()
+				self.text = self.text_data["Txt"]["value"]
 			
 			self.skipRest(prevPos, size)
 		 
 		self.skipRest(pos, extraFieldsSize)	
+	
+	def readTypeTool(self):
+		ver = self.readShortInt()
+		transforms = [0]*6
+		for i in range(6):
+			transforms[i] = self.readDouble()
+		text_ver = self.readShortInt()
+		descr_ver = self.readInt()
+		if ver != 1 or text_ver != 50 or descr_ver != 16:
+			return
+		text_data = self.readDescriptorStructure()
+		
+		wrap_ver = self.readShortInt()
+		descr_ver = self.readInt()
+		wrap_data = self.readDescriptorStructure()
+		rectangle = [0]*4
+		for i in range(4):
+			rectangle[i] = self.readDouble()
+		self.text_data = text_data
+		self.wrap_data = wrap_data
+		styled_text = []
+		#try:
+		
+		def getSafeFont(font):
+			safe_font_list = ["Arial", "Courier New", "Georgia", "Times New Roman",
+							"Verdana", "Trebuchet MS", "Lucida Sans", "Tahoma"]
+			for safe_font in safe_font_list:
+				it = True
+				for word in safe_font.split(" "):
+					if not word in font:
+						it = False
+				if it:
+					return safe_font
+
+			return font
+		
+		ps_dict = self.text_data["EngineData"]["value"]
+		text = ps_dict["EngineDict"]["Editor"]["Text"]
+		style_run = ps_dict["EngineDict"]["StyleRun"]
+		styles_list = style_run["RunArray"]
+		styles_run_list = style_run["RunLengthArray"]
+		
+		fonts_list = ps_dict["DocumentResources"]["FontSet"]
+		start = 0
+		for i, style in enumerate(styles_list):
+			st = style["StyleSheet"]["StyleSheetData"] 
+			end = int(start + styles_run_list[i])
+			font_i = st["Font"]
+			font_name=fonts_list[font_i]["Name"]
+			safe_font_name = getSafeFont(font_name)
+			color = tuple([int(255*j) for j in st["FillColor"]["Values"]][1:])
+			
+			line_height = "Auto" if st["Leading"] == 1500 else st["Leading"]
+			piese = text[start:end]
+			styled_text.append({'text': piese,
+							    'style':{
+									'font': safe_font_name,
+									'size': st["FontSize"],
+									'color': "#%02X%02X%02X" % color,
+									'underline': st["Underline"],
+									'allCaps': st["FontCaps"],
+									'italic': "Italic" in font_name or st["FauxItalic"],
+									'bold': "Bold" in font_name or st["FauxBold"],
+									'letterSpacing': st["Tracking"] / 20,
+									'lineHeight': line_height,
+									'paragraphEnds': piese[-1] in ["\n", "\r"],
+								}})
+			start += styles_run_list[i]
+		self.styled_text = styled_text
+		#except:
+		#	pass
+	
+	def readVectorMask(self):
+		version = self.readInt()
+		flags = self.readBits(4)
+		#TODO Read PAth Information
+		pass
+	
+	def readLayerMask(self):
+		'''
+		4 bytes.
+		Size of the data: 36, 20, or 0.
+		If zero, the following fields are not present
+		'''
+		size = self.readInt()
+		validate("Size of the data", size, list=[36, 20, 0])
+		if size == 0:
+			return
+		
+		self.maskRectangle = self.getRectangle()
+		maskDefaultColor = self.readTinyInt()
+		flagsBits = self.readBits(1)
+		if size == 20:
+			self.maskPadding = self.readShortInt()
+		else:
+			realFlags = self.readTinyInt()
+			realUserMaskBack = self.readTinyInt()
+			maskRectangle2 = self.getRectangle()
 	
 	def parse_base_layer(self):
 		header = self.psd.header
@@ -591,7 +695,14 @@ class PSDLayer(PSDParserBase):
 		opacity_devider = self.opacity / 255
 		for i, channelTuple in enumerate(self.channelsInfo):
 			channelId, length = channelTuple
-			channel = self.readColorPlane(needReadPlaneInfo, lineLengths, i)
+			if channelId < -1:
+				width = self.maskRectangle["width"]
+				height = self.maskRectangle["height"]
+			else:
+				width = self.rectangle["width"]
+				height = self.rectangle["height"]
+				
+			channel = self.readColorPlane(needReadPlaneInfo, lineLengths, i, height=height, width=width)
 			if channelId == -1:
 				self.channels["a"] = [int(ch * opacity_devider) for ch in channel]  
 			elif channelId == 0:
@@ -600,6 +711,8 @@ class PSDLayer(PSDParserBase):
 				self.channels["g"] = channel
 			elif channelId == 2:
 				self.channels["b"] = channel
+			elif channelId < -1:
+				self.channels["a"] = [int(a * (c/255)) for a, c in zip(self.channels["a"], channel)]
 				
 		self.debugMethodInOut("getImageData", 
 							  invars={"needReadPlaneInfo":needReadPlaneInfo,
@@ -608,10 +721,10 @@ class PSDLayer(PSDParserBase):
 		#self.makePngImage()
 		
 				
-	def readColorPlane(self, needReadPlaneInfo=True, lineLengths=[], planeNum=-1):
+	def readColorPlane(self, needReadPlaneInfo=True, lineLengths=[], planeNum=-1, height=None, width=None):
 		self.debugMethodInOut("readColorPlane")
 
-		size = self.rectangle["width"] * self.rectangle["height"]
+		size = width  * height
 		imageData = []
 		rleEncoded = None
 		
@@ -635,25 +748,20 @@ class PSDLayer(PSDParserBase):
 			rleEncoded = compression == 1 
 			if rleEncoded: #RLE compressed
 				if not lineLengths:
-					lineLengths = []
-					for h in range(self.rectangle["height"]):
-						lineLength = self.readShortInt()
-						lineLengths.append(lineLength)
+					lineLengths = [self.readShortInt() for a in range(height)]
 			planeNum = 0
 			#TODO raise NotImplementedError("Zip compression is not working yet.")
 		else:
-			rleEncoded = lineLengths != None
+			rleEncoded = lineLengths != []
 		
 		if rleEncoded:
-			imageData = self.readPlaneCompressed(lineLengths, planeNum)
+			imageData = self.readPlaneCompressed(lineLengths, planeNum, h=height, w=width)
 		else:
 			imageData = self.readBytesList(size)
 		
 		return imageData
 	
-	def readPlaneCompressed(self, lineLengths, planeNum):
-		w = self.rectangle["width"]
-		h = self.rectangle["height"]
+	def readPlaneCompressed(self, lineLengths, planeNum, h=None, w=None):
 		b = [0] * (w*h)
 		s = [] #w * 2
 		pos = 0
@@ -694,13 +802,17 @@ class PSDLayer(PSDParserBase):
 		height = self.rectangle["height"]
 		
 		self.image = Image.new("RGBA", (width, height))
-		imageData = []
+		imageData = [0]* (height * width)
+		white_rgba = [255] * 4
+		rgba_letters = ["r", "g","b","a"]
+		rgba_on_arr = [ len(self.channels[c]) for c in rgba_letters]
+				
 		for i in range(height * width):
 			rgba = [255] * 4
-			for j, c in enumerate(["r", "g","b","a"]):
-				if len(self.channels[c]) > i:
+			for j, c in enumerate(rgba_letters):
+				if rgba_on_arr[j] > i:
 					rgba[j] = self.channels[c][i]
-			imageData.append(tuple(rgba))
+			imageData[i] = tuple(rgba)
 		
 		self.image.putdata(imageData)
 		

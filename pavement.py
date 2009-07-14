@@ -6,7 +6,7 @@ setup(
 	name="pypsd",
 	packages=['pypsd'],
 	package_data=find_package_data('pypsd', 'pypsd', only_in_packages=False),
-	version="0.1.2",
+	version="0.1.3",
 	url="http://code.google.com/p/pypsd",
 	author="Aleksandr Motsjonov",
 	author_email="soswow@gmail.com",

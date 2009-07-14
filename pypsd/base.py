@@ -2,8 +2,13 @@ import unittest
 import logging
 #Python 3.0: import io
 import os.path
+from ps_parser import PSParser 
 
 module_logger = logging.getLogger("pypsd.sectionbase")
+
+INFINITY = 'infinity'
+ZERO = 0 
+MINUS_ZERO = -0
 
 def bytesToInt(bytes):
 	shift = 0
@@ -71,11 +76,20 @@ class PSDParserBase(object):
 		self.stream.seek(size, 1) #whence=
 		self.debugMethodInOut("skip", {"size":size})
 	
+	def readUnicodeString(self):
+		charsNumber = self.readInt()
+		unicode_string = u''
+		for i in range(charsNumber):
+			char_code = self.readShortInt()
+			if char_code > 0:
+				unicode_string += unichr(char_code)
+		return unicode_string
+	
 	def skipIntSize(self):
 		size = self.readInt()
 		self.skip(size)
-		self.debugMethodInOut("skipIntSize",result="skipped=%s" % size)
-		
+		self.debugMethodInOut("skipIntSize",result="skipped=%s" % size)	
+	
 	def readCustomInt(self, size, negative=False):
 		#Python 3: value = bytesToInt(self.stream.read(size))
 		#Python 2.6: bb = bytearray(size)
@@ -90,6 +104,32 @@ class PSDParserBase(object):
 		self.debugMethodInOut("readCustomInt", {"size":size}, result=value)
 		return value
 
+	def readDouble(self):
+		b1 = self.readInt(4)
+		b2 = self.readInt(4)
+		long = b1 << 32 | b2
+		signbit = long >> 63
+		expan = long >> 52 & 0xfff >> 1
+		if expan >= 0x7ff:
+			return INFINITY
+		elif expan == 0x000:
+			return ZERO
+		elif expan == 0x800:
+			return MINUS_ZERO
+		signif = ((long & 0xfffffffffffff) | (1<<52)) * pow(2, -52)
+		
+		return pow(-1, signbit) * pow(2, expan-1023) * signif
+		
+		
+	def readInt(self, returnEven=False, isLong=True):
+		value = self.readCustomInt(4, negative=not isLong)
+		
+		if returnEven:
+			value = makeEven(value)
+		
+		self.debugMethodInOut("readInt", result=value)
+		return value
+
 	def readShortInt(self):
 		value = self.readCustomInt(2, negative=True)
 		self.debugMethodInOut("readShortInt", result=value)
@@ -100,15 +140,6 @@ class PSDParserBase(object):
 		
 		self.debugMethodInOut("readTinyInt", result=tinyInt)
 		return tinyInt
-
-	def readInt(self, returnEven=False, isLong=True):
-		value = self.readCustomInt(4, negative=not isLong)
-		
-		if returnEven:
-			value = makeEven(value)
-		
-		self.debugMethodInOut("readInt", result=value)
-		return value
 	
 	def readBytesList(self, size):
 		#Python 2.6: barray = bytearray(size)
@@ -174,8 +205,103 @@ class PSDParserBase(object):
 			message += " Out: %s" % result
 			
 		self.logger.debug(message)
+	
+	def readOsType(self):
+		descriptor = {}
+		value = None
+		osType = self.readString(4)
+		if osType == "TEXT": #String
+			value = self.readUnicodeString()
+		elif osType == "enum": #Enumerated
+			typeID = self.readLengthWithString()
+			enum = self.readLengthWithString()
+			value = {"typeID": typeID, "enum": enum}
+		elif osType in ['Objc', 'GlbO']:  #Descriptor, GlobalObject same as Descriptor
+			typeID = self.readLengthWithString()
+			enum = self.readLengthWithString()
+			value = {"typeID": typeID, "enum": enum}
+		elif osType == 'VlLs':  #List
+			list_size = self.readInt()
+			value = []
+			for k in range(list_size):
+				value.append(self.readOsType())
+		elif osType == 'doub':  #Double
+			value = self.readDouble()
+		elif osType == 'UntF':  #Unit float
+			unitType = self.readString(4)
+			#TODO Validate
+			unitValue = self.readDouble()
+			value = {'type':unitType, 'value':unitValue}
+		elif osType == 'long':  #Integer
+			value = self.readInt()
+		elif osType == 'bool':  #Boolean
+			value = self.readBoolean()
+		elif osType in ['type', 'GlbC']:  #GlbC'= Class
+			name = self.readUnicodeString()
+			classID = self.readLengthWithString()
+			value = {'name':name, 'classID':classID}
+		elif osType == 'alis':  #Alias
+			data_length = self.readInt()
+			value = self.readString(data_length)
+		elif osType == 'obj ':   #Reference
+			obj_items_num = self.readInt()
+			for j in range(obj_items_num):
+				ref_obj_type = self.readString(4)
+				if ref_obj_type == 'prop': #Property
+					name = self.readUnicodeString()
+					classID = self.readLengthWithString()
+					keyID = self.readLengthWithString()
+				elif ref_obj_type == 'Clss': #Class
+					name = self.readUnicodeString()
+					classID = self.readLengthWithString()
+				elif ref_obj_type == 'Enmr': #Enumerated Reference
+					name = self.readUnicodeString()
+					classID = self.readLengthWithString()
+					typeID = self.readLengthWithString()
+					enum = self.readLengthWithString()
+				elif ref_obj_type == 'rele': #Offset
+					name = self.readUnicodeString()
+					classID = self.readLengthWithString()
+					offsetValue = self.readInt()
+				elif ref_obj_type == 'Idnt': #Identifier
+					pass
+				elif ref_obj_type == 'indx': #Index
+					pass
+				elif ref_obj_type == 'name': #Name
+					pass
+		elif osType == 'tdta': #Some strange types.
+			data_length = self.readInt()
+			pos = self.getPos()
+			data_string = self.readString(data_length)
+			p = PSParser(source=data_string)
+			value = p.parse()
+			self.skipRest(pos, data_length)
 
-
+		return {'type': osType, 'value': value}
+		
+	
+	def readDescriptorStructure(self):
+		name_from_classID = self.readUnicodeString()
+		classID = self.readLengthWithString()
+		items_num = self.readInt()
+		descriptors = {}
+		for i in range(items_num):
+			txt_key = self.readLengthWithString().strip()
+			descriptors[txt_key] = self.readOsType()
+		return descriptors
+	
+	def readBoolean(self):
+		byte = self.readTinyInt()
+		return byte != 0
+	
+	def readLengthWithString(self, default_length=4):
+		length = self.readInt()
+		if length == 0:
+			value = self.readString(default_length)
+		else:
+			value = self.readString(length)
+			
+		return value
 #class CodeMapObject(object):
 #	def __init__(self, code=None, map={}, *args, **kwargs):
 #		self.logger = logging.getLogger("pypsd.base.CodeMapObject")
@@ -220,6 +346,15 @@ class PSDBaseTest(unittest.TestCase):
 		stream.write('\xf0\x00\x00\x00')
 		stream.write('\xff\xff\xff\xfe')
 		stream.write('\x0f\xff')
+		
+		stream.write('\xc0\x00\x00\x00\x00\x00\x00\x00')
+		stream.write('\x40\x00\x00\x00\x00\x00\x00\x00')
+		stream.write('\x3f\xf0\x00\x00\x00\x00\x00\x02')
+		
+		stream.write('\x7f\xf0\x00\x00\x00\x00\x00\x00')
+		stream.write('\x00\x00\x00\x00\x00\x00\x00\x00')
+		stream.write('\x80\x00\x00\x00\x00\x00\x00\x00')
+		
 		stream.seek(0)
 		
 		p = PSDParserBase(stream)
@@ -228,6 +363,19 @@ class PSDBaseTest(unittest.TestCase):
 		assert p.readCustomInt(4, negative=True) == -0x0fffffff-1
 		assert p.readCustomInt(4, negative=True) == -2
 		assert p.readCustomInt(2, negative=True) == 0xfff
+		d1 = p.readDouble()
+		d2 = p.readDouble()
+		d3 = p.readDouble()
+		infinity = p.readDouble()
+		zero = p.readDouble()
+		minuszero = p.readDouble()
+		assert d1 == -2
+		assert d2 == 2
+		assert d3 == 1.0000000000000004
+		assert d3 != 1.0000000000000006
+		assert infinity == INFINITY
+		assert zero == ZERO
+		assert minuszero == MINUS_ZERO
 		
 
 if __name__ == "__main__":

@@ -8,12 +8,13 @@ from sections import *
 
 logging.config.fileConfig("%s/conf/logging.conf" % os.path.dirname(__file__))
 
-
 validFilenameChars = "-_.() %s%s" % (string.ascii_letters, string.digits)
 
 def make_valid_filename(path, layer_name, layer_id):
 	old_layer_name = layer_name
-	layer_name = layer_name.decode()
+	#layer_name = layer_name.decode()
+	if type(layer_name) == str:
+		layer_name = layer_name.decode()
 	cleanedFilename = unicodedata.normalize('NFKD', layer_name).encode('ASCII', 'ignore')
 	layer_name = ''.join(c for c in cleanedFilename if c in validFilenameChars)
 
@@ -21,7 +22,7 @@ def make_valid_filename(path, layer_name, layer_id):
 	#Replaces should be only last occurrence (should be filename)
 	path = path[::-1].replace(old_layer_name[::-1], layer_name[::-1], 1)[::-1]
 
-	if os.path.exists(path): #file Already Exists
+	if os.path.exists(path) or cleanedFilename == "": #file Already Exists
 		layer_name += str(layer_id)
 
 	return layer_name
@@ -39,6 +40,8 @@ class PSDFile(object):
 	'''
 
 	def __init__(self, fileName = None, stream = None):
+		import psyco
+		psyco.profile()
 		self.logger = logging.getLogger("pypsd.psdfile.PSDFile")
 		self.logger.debug("__init__ method. In: fileName=%s" % fileName)
 

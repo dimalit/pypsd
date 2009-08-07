@@ -102,7 +102,11 @@ class PSDFile(object):
 			if not self.stream:
 				stream.close()
 
-	def save(self, dest=None, saveInvis=False, dirName=None):
+	def extractInfo(self):
+		return PsdInfo(self)
+			
+
+	def save(self, dest=None, saveInvis=False, dirName=None, indexNames=False, inFolders=True):
 		if not dest:
 			dest = os.getcwd()
 
@@ -123,7 +127,7 @@ class PSDFile(object):
 			id = layer.layerId
 			toSave = True
 			type = layer.layerType["code"]
-			if type != 0:
+			if type != 0 and inFolders:
 				toSave = False
 				if type in [1, 2]:
 					name = make_valid_filename("./%s" % name, name, id)
@@ -133,6 +137,7 @@ class PSDFile(object):
 					os.chdir(subdir)
 				elif type == 3:
 					os.chdir("./..")
+				
 			if not layer.visible and not saveInvis:
 				toSave = False
 
@@ -141,15 +146,22 @@ class PSDFile(object):
 
 			if toSave:
 				layer.saved = True
-				name = make_valid_filename("%s/%s.png" % (os.getcwd(), name), name, id)
-				layer.name = name #if it changes until
-				try:
-					#buffer = layer.image
-					#writer = open("%s/%s.png" % (dest, name), "wb")
-					#writer.write(buffer)
-					layer.image.save("%s/%s.png" % (os.getcwd(), name), "PNG")
-				except SystemError:
-					self.logger.error("Can't save %s layer." % name)
+				if indexNames:
+					try:
+						layer.image.save("%d.png" % layer.layerId, "PNG")
+					except SystemError:
+						self.logger.error("Can't save %s layer." % name)
+				else:
+					name = make_valid_filename("%s/%s.png" % (os.getcwd(), name), name, id)
+					layer.name = name #if it changes until
+					try:
+						#buffer = layer.image
+						#writer = open("%s/%s.png" % (dest, name), "wb")
+						#writer.write(buffer)
+						layer.image.save("%s/%s.png" % (os.getcwd(), name), "PNG")
+					except SystemError:
+						self.logger.error("Can't save %s layer." % name)
+					
 		return dirName
 
 	def __str__(self):
@@ -160,3 +172,53 @@ class PSDFile(object):
 				self.imageResources,
 				self.layerMask,
 				self.imageData))
+
+class _PsdHeaderInfo(dict):
+	def __init__(self, psd):
+		self["height"] = psd.header.height
+		self["width"] = psd.header.width
+		self["depth"] = psd.header.depth
+		self["colorMode"] = psd.header.colorMode["code"]
+		
+	def __getattr__(self, key):
+		try:
+			return self[key]
+		except KeyError:
+			raise AttributeError
+
+class _PsdLayerInfo(dict):
+	def __init__(self, layer):
+		self["id"] = layer.layerId
+		self["opacity"] = layer.opacity
+		self["name"] = layer.name 
+		self["text"] = layer.text 
+		self["position"] = {"top": layer.rectangle["top"], "left": layer.rectangle["left"], 
+								 "bottom": layer.rectangle["bottom"], "right": layer.rectangle["right"]} 
+		self["dimensions"] = {"height": layer.rectangle["height"], "width":layer.rectangle["width"]}
+		#self["image"] = layer.image
+		 
+	def __getattr__(self, key):
+		try:
+			return self[key]
+		except KeyError:
+			raise AttributeError
+	
+
+class PsdInfo(dict):	
+	def __init__(self, psd):
+		self["header"] = _PsdHeaderInfo(psd)
+		layers = []
+		for layer in psd.layerMask.layers:
+			if layer.layerType["code"] != 0 or \
+			   layer.is_base_layer or \
+			   not layer.visible:
+				continue
+			layers.append(_PsdLayerInfo(layer))
+			
+		self["layers"] = layers
+		
+	def __getattr__(self, key):
+		try:
+			return self[key]
+		except KeyError:
+			raise AttributeError

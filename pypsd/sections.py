@@ -184,7 +184,6 @@ class PSDColorMode(PSDParserBase):
 		return "==Color Mode=="
 
 
-
 class PSDImageResources(PSDParserBase):
 	'''
 	The third section of the file contains image resources. As with
@@ -202,7 +201,121 @@ class PSDImageResources(PSDParserBase):
 	def parse(self):
 		self.debugMethodInOut("parse")
 		
-		self.skipIntSize() #TODO real Data
+		'''
+		4 bytes
+		Length of image resource section.
+		'''
+		length = self.readInt()
+		pos = self.getPos()
+		
+		'''
+		Image resources
+		'''
+		self.resources = []
+		while self.getPos() < pos + length:
+			'''
+			2 bytes
+			Signature: '8BIM'
+			'''
+			sign = self.readString(4)
+			validate("Image Resource block signature", sign, mustBe=self.SIGNATIRE_8BIM)
+			'''
+			2 bytes
+			Unique identifier for the resource. Table 1.6 contains a list of resource
+			IDs used by Photoshop.
+			'''
+			resId = self.readShortInt()
+			'''
+			Name: Pascal string, padded to make the size even (a null name
+			consists of two bytes of 0)
+			'''
+			name = self.readPascalString()
+			resource = {"id": resId, "name": name, "data":None}
+			
+			'''
+			4 bytes
+			Actual size of resource data that follows
+			'''
+			data_length = self.readInt(returnEven=True)
+			data_start = self.getPos()
+			
+			'''
+			The resource data, described in the sections on the individual resource
+			types. It is padded to make the size even.
+			'''
+			
+			if resId == 1050: #Slices
+				slice_data = {}
+				'''
+				4 bytes.
+				Version ( = 6)
+				'''
+				ver = self.readInt()
+				validate("Photoshop Version for slices", ver, mustBe=6)
+				
+				'''
+				4 * 4 bytes.
+				Bounding rectangle for all of the slices: top, left, bottom, right of all the slices
+				'''
+				slice_data["rectangle"] = self.getRectangle()
+				'''
+				Name of group of slices: Unicode string
+				'''
+				slice_data["group_name"] = self.readUnicodeString()
+				'''
+				4 bytes.
+				Number of slices to follow.
+				'''
+				slices_num = self.readInt()
+				slices = [{}] * slices_num 
+				for i in range(slices_num):
+					slice = {}
+					''' 4 bytes. ID'''
+					slice["id"] = self.readInt()
+					''' 4 bytes. Group ID'''
+					slice["group_id"] = self.readInt()
+					''' 4 bytes. Origin'''
+					slice["origin"] = self.readInt()
+					''' 4 bytes. Origin'''
+					if slice["origin"] == 1:
+						'''
+						4 bytes.
+						Associated Layer ID
+						NOTE: Only present if Origin = 1
+						'''
+						slice["assoc_layer_id"] = self.readInt()
+					''' Name: Unicode string '''
+					slice["name"] = self.readUnicodeString()
+					''' 4 bytes. Name '''
+					slice["type"] = self.readInt()
+					'''
+					4 * 4 bytes.
+					Left, top, right, bottom positions
+					'''
+					slice["position"] = self.getRectangle()
+					'''
+					Unicode Strings: Url, Target, Message, Alt Tag
+					'''
+					slice["URL"] = self.readUnicodeString()
+					slice["target"] = self.readUnicodeString()
+					slice["message"] = self.readUnicodeString()
+					slice["alt"] = self.readUnicodeString()
+					''' 1 byte. Cell text is HTML: Boolean'''
+					slice["cell_is_HTML"] = self.readBoolean()
+					''' Unicode. Cell text: Unicode string'''
+					slice["cell_text"] = self.readUnicodeString()
+					''' 4 bytes. Horizontal alignment'''
+					slice["hor_align"] = self.readInt()
+					''' 4 bytes. Vertical alignment'''
+					slice["ver_align"] = self.readInt()
+					slice["argb"] = [self.readTinyInt() for a in range(4)]
+					
+					slices[i] = slice
+			
+			self.resources.append(resource)
+			
+			self.skipRest(data_start, data_length)
+		self.skipRest(pos, length)
 
 	def __str__(self):
 		return "==Image Resources=="
@@ -460,9 +573,7 @@ class PSDLayer(PSDParserBase):
 		Variable.
 		Layer name: Pascal string, padded to a multiple of 4 bytes.
 		'''
-		size = self.readTinyInt() & 0xFF
-		size = ((size + 1 + 3) & ~0x03) - 1
-		self.name = self.readString(size) #TODO Here could be problems!!!
+		self.name = self.readPascalString()
 		self.logger.debug([self.name])
 		
 		prevPos = self.getPos()
@@ -871,4 +982,3 @@ class PSDLayer(PSDParserBase):
 			    self.rectangle["left"], self.visible, self.obsolete,
 			    self.clipping, self.transpProtected, self.pixelDataIrrelevant,
 			    self.channelsInfo, self.blendMode))
-		

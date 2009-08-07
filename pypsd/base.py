@@ -162,10 +162,22 @@ class PSDParserBase(object):
 		self.debugMethodInOut("readBits", {"size":size}, bits)
 		return bits
 
+	def readPascalString(self):
+		size = self.readTinyInt()
+		if size == 0:
+			self.skip(1)
+			return ""
+		else: 
+			size = size & 0xFF
+			size = ((size + 1 + 3) & ~0x03) - 1
+			name = self.readString(size)
+		
+		return name
+		
 	def readString(self, size):
 		dataRead = self.stream.read(size)
 		#Python 3:value = str(dataRead, "UTF-8")
-		value = str(dataRead)  
+		value = str(dataRead)
 		value = "".join([s for s in value if ord(s) != 0]) #0 is padding char
 		self.debugMethodInOut("readString", {"size":size}, value)
 		
@@ -189,7 +201,8 @@ class PSDParserBase(object):
 		return self.stream.tell()
 	
 	def skipRest(self, blockStart, blockSize):
-		self.skip(blockStart + blockSize - self.getPos())
+		toSkip = blockStart + blockSize - self.getPos()
+		self.skip(toSkip)
 	
 	def getCodeLabelPair(self, code, map):
 		return {"code":code, "label":map[code]}

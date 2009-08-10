@@ -107,6 +107,7 @@ class PSDFile(object):
 			
 
 	def save(self, dest=None, saveInvis=False, dirName=None, indexNames=False, inFolders=True):
+		initCwd = os.getcwd()
 		if not dest:
 			dest = os.getcwd()
 
@@ -161,7 +162,8 @@ class PSDFile(object):
 						layer.image.save("%s/%s.png" % (os.getcwd(), name), "PNG")
 					except SystemError:
 						self.logger.error("Can't save %s layer." % name)
-					
+		
+		os.chdir(initCwd)
 		return dirName
 
 	def __str__(self):

@@ -11,6 +11,7 @@ logging.config.fileConfig("%s/conf/logging.conf" % os.path.dirname(__file__))
 class PSDTest(unittest.TestCase):
 	def setUp(self):
 		self.testPSDFileName2 = "./../samples/5x5.psd"
+		self.test_psd_scroll = "./../samples/scroll.psd"
 		self.test_psd_slices = "./../samples/slices.psd"
 	
 	def test_extract_info(self):
@@ -47,9 +48,10 @@ class PSDTest(unittest.TestCase):
 		v = dumps(extract)
 		p = loads(v)
 	
-	def test_slices(self):
-		psd = PSDFile(self.test_psd_slices)
+	def test_everything(self):
+		psd = PSDFile(self.test_psd_scroll)
 		psd.parse()
+		psd.save(indexNames=True, inFolders=False)
 		
 	
 	def _test_make_valid_filename(self):
